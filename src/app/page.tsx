@@ -1,21 +1,29 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Globe, Users, KeyRound, Sparkles, ArrowRight, ShieldCheck, Trophy, MapPin, RefreshCw, ChevronLeft } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Globe, Users, KeyRound, Sparkles, ArrowRight, MapPin, RefreshCw, ChevronLeft, AlertCircle, Layers, BookOpen, Trophy, Landmark, CheckCircle2, Gamepad2, Smile } from 'lucide-react'
+import { checkRoomExists, joinOrCreateRoom, getRoomCategoryKey } from '@/lib/supabase/playersService'
+import { GAME_CATEGORIES, CategoryKey } from '@/config/mapConfig'
 
 type ScreenMode = 'main' | 'join' | 'create'
 
+const AVATAR_OPTIONS = ['🦊', '🤖', '👽', '🤠', '👻', '🦖', '🦁', '🚀', '👑', '🐼', '🦄', '🐯']
+
 export default function Home() {
+  const router = useRouter()
   const [mode, setMode] = useState<ScreenMode>('main')
   const [nickname, setNickname] = useState<string>('')
+  const [selectedAvatar, setSelectedAvatar] = useState<string>('🦊')
   const [pin, setPin] = useState<string[]>(['', '', '', ''])
+  const [selectedCategory, setSelectedCategory] = useState<CategoryKey>('geografia')
   const [isJoining, setIsJoining] = useState<boolean>(false)
   const [isCreating, setIsCreating] = useState<boolean>(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  // Game creation options
-  const [rounds, setRounds] = useState<number>(5)
-  const [timePerRound, setTimePerRound] = useState<number>(60)
-  const [mapType, setMapType] = useState<string>('Mundo')
+  // Active Category Theme styling
+  const activeCategoryConfig = GAME_CATEGORIES[selectedCategory] || GAME_CATEGORIES.geografia
+  const currentTheme = activeCategoryConfig.theme
 
   // Refs for 4-digit PIN input focus management
   const pinInputRefs = [
@@ -25,15 +33,30 @@ export default function Home() {
     useRef<HTMLInputElement>(null)
   ]
 
-  // Pre-fill a fun default nickname if empty
+  // Pre-fill a fun default nickname and avatar if stored
   useEffect(() => {
-    const randomSuffix = Math.floor(1000 + Math.random() * 9000)
-    setNickname(`Explorador_${randomSuffix}`)
+    const savedName = localStorage.getItem('geo_royale_current_player')
+    const savedAvatar = localStorage.getItem('geo_royale_current_avatar')
+    
+    if (savedName) {
+      setNickname(savedName)
+    } else {
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000)
+      setNickname(`Jugador_${randomSuffix}`)
+    }
+
+    if (savedAvatar) {
+      setSelectedAvatar(savedAvatar)
+    } else {
+      const randomAvatar = AVATAR_OPTIONS[Math.floor(Math.random() * AVATAR_OPTIONS.length)]
+      setSelectedAvatar(randomAvatar)
+    }
   }, [])
 
   // Auto focus first PIN input when switching to 'join' mode
   useEffect(() => {
     if (mode === 'join') {
+      setErrorMessage(null)
       setTimeout(() => {
         pinInputRefs[0].current?.focus()
       }, 100)
@@ -42,14 +65,13 @@ export default function Home() {
 
   // Handle PIN digit change
   const handlePinChange = (index: number, value: string) => {
-    // Only accept numeric inputs
+    setErrorMessage(null)
     const digit = value.replace(/\D/g, '').slice(-1)
     
     const newPin = [...pin]
     newPin[index] = digit
     setPin(newPin)
 
-    // Auto-focus next input if digit entered
     if (digit && index < 3) {
       pinInputRefs[index + 1].current?.focus()
     }
@@ -62,109 +84,205 @@ export default function Home() {
     }
   }
 
-  // Handle Join Submission
-  const handleJoinSubmit = (e: React.FormEvent) => {
+  // Handle Join Submission (Invitado) - 100% Non-Blocking & Instant
+  const handleJoinSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setErrorMessage(null)
+
     const fullPin = pin.join('')
     if (fullPin.length !== 4) return
+
+    const playerNick = nickname.trim() || `Jugador_${Math.floor(1000 + Math.random() * 9000)}`
     setIsJoining(true)
-    
-    // Simulate connecting to room
-    setTimeout(() => {
+
+    try {
+      // 1. Verify if room exists in Supabase/local (Max 400ms timeout)
+      const roomExists = await checkRoomExists(fullPin)
+
+      if (!roomExists) {
+        setIsJoining(false)
+        setErrorMessage(`No existe ninguna sala activa con el PIN ${fullPin}. Comprueba el código o crea una nueva sala.`)
+        return
+      }
+
+      // 2. Fetch the host's room category_key (Max 400ms timeout)
+      const roomCategory = await getRoomCategoryKey(fullPin)
+
+      // 3. Register guest player with the SAME room category_key & selectedAvatar
+      joinOrCreateRoom(fullPin, playerNick, roomCategory, selectedAvatar)
+      localStorage.setItem('geo_royale_current_player', playerNick)
+      localStorage.setItem('geo_royale_current_avatar', selectedAvatar)
+
+      // 4. Instant navigation to /sala/[pin]
       setIsJoining(false)
-      alert(`Conectando a la sala con PIN: ${fullPin} como ${nickname || 'Jugador'}`)
-    }, 1000)
+      router.push(`/sala/${fullPin}`)
+    } catch (error) {
+      console.error('Error joining room:', error)
+      setIsJoining(false)
+      setErrorMessage('Error al conectar con la sala. Inténtalo de nuevo.')
+    }
   }
 
-  // Handle Create Room Submission
+  // Handle Create Room Submission (Anfitrión) - 100% Non-Blocking & Instant
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    setIsCreating(true)
-    const generatedPin = Math.floor(1000 + Math.random() * 9000).toString()
+    setErrorMessage(null)
 
-    setTimeout(() => {
+    const playerNick = nickname.trim() || `Host_${Math.floor(1000 + Math.random() * 9000)}`
+    setIsCreating(true)
+
+    try {
+      // 1. Generate random 4-digit PIN
+      const generatedPin = Math.floor(1000 + Math.random() * 9000).toString()
+
+      // 2. Register host player with selectedCategory & selectedAvatar
+      joinOrCreateRoom(generatedPin, playerNick, selectedCategory, selectedAvatar)
+      localStorage.setItem('geo_royale_current_player', playerNick)
+      localStorage.setItem('geo_royale_current_avatar', selectedAvatar)
+
+      // 3. Instant navigation to /sala/[pin]
       setIsCreating(false)
-      alert(`¡Sala Creada con Éxito!\nPIN de la Sala: ${generatedPin}\nRondas: ${rounds}\nTiempo por ronda: ${timePerRound}s\nMapa: ${mapType}`)
-    }, 1000)
+      router.push(`/sala/${generatedPin}`)
+    } catch (error) {
+      console.error('Error creating room:', error)
+      setIsCreating(false)
+      setErrorMessage('Error al crear la sala.')
+    }
+  }
+
+  const categoryIconMap = {
+    geografia: Globe,
+    cultura_general: BookOpen,
+    deportes: Trophy,
+    historia: Landmark
   }
 
   const isPinComplete = pin.every((digit) => digit !== '')
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-between p-4 sm:p-6 relative overflow-hidden font-sans selection:bg-emerald-500 selection:text-slate-950">
+    <div className={`min-h-screen bg-slate-950 bg-gradient-to-b ${currentTheme.bgGradient} text-slate-100 flex flex-col items-center justify-between p-4 sm:p-6 relative overflow-hidden font-sans transition-all duration-500 selection:bg-emerald-500 selection:text-slate-950`}>
       
-      {/* Background Decorative Gradients & Grid */}
-      <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px] opacity-30 pointer-events-none" />
-      <div className="absolute -top-32 -left-32 w-80 h-80 bg-emerald-500/15 rounded-full blur-3xl pointer-events-none animate-pulse" />
-      <div className="absolute -bottom-32 -right-32 w-80 h-80 bg-cyan-500/15 rounded-full blur-3xl pointer-events-none animate-pulse" />
+      {/* Dynamic Theme Glow Orbs */}
+      <div className="absolute inset-0 bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:24px_24px] opacity-25 pointer-events-none" />
+      <div className="absolute -top-32 -left-32 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none animate-pulse" />
+      <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none animate-pulse" />
 
-      {/* Top Bar / Status */}
-      <header className="w-full max-w-md flex items-center justify-between z-10 pt-2 pb-4">
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/90 border border-slate-800 text-xs font-semibold text-emerald-400 shadow-sm backdrop-blur-md">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-          <span>Supabase Conectado</span>
+      {/* Top Header Status */}
+      <header className="w-full max-w-md flex items-center justify-between z-10 pt-2 pb-3">
+        <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/80 border border-slate-800/80 text-xs font-bold text-slate-200 shadow-md backdrop-blur-md">
+          <Gamepad2 className="w-4 h-4 text-emerald-400" />
+          <span>Juego Multijugador</span>
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-900/60 px-3 py-1.5 rounded-full border border-slate-800/80">
-          <Globe className="w-3.5 h-3.5 text-cyan-400" />
-          <span>v1.0 • Multijugador</span>
+        <div className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border shadow-sm backdrop-blur-md transition-colors ${currentTheme.badgeClass}`}>
+          <span>{activeCategoryConfig.name}</span>
         </div>
       </header>
 
-      {/* Main Content Area (Mobile-First Container) */}
-      <main className="w-full max-w-md flex-1 flex flex-col items-center justify-center z-10 py-6">
+      {/* Main Content Area */}
+      <main className="w-full max-w-md flex-1 flex flex-col items-center justify-center z-10 py-2">
 
-        {/* Hero Title */}
-        <div className="text-center space-y-2 mb-8 animate-fade-in">
-          <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 border border-emerald-500/30 mb-3 shadow-lg shadow-emerald-500/10">
-            <MapPin className="w-8 h-8 text-emerald-400 animate-bounce" />
+        {/* Friendly Hero Title */}
+        <div className="text-center space-y-1.5 mb-4 animate-fade-in">
+          <div className="inline-flex items-center justify-center p-3 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl mb-1">
+            <Sparkles className="w-7 h-7 text-amber-400 animate-spin-slow" />
           </div>
-          <h1 className="text-4xl sm:text-5xl font-black tracking-wider bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent uppercase drop-shadow-sm">
+          <h1 className={`text-4xl sm:text-5xl font-black tracking-wider bg-gradient-to-r ${currentTheme.heroTitleGradient} bg-clip-text text-transparent uppercase drop-shadow-md`}>
             GEO-ROYALE
           </h1>
-          <p className="text-slate-400 text-xs sm:text-sm max-w-xs mx-auto">
-            Demuestra tus conocimientos geográficos compitiendo en salas privadas en tiempo real.
+          <p className="text-slate-300 text-xs sm:text-sm max-w-xs mx-auto font-medium">
+            ¡El juego de preguntas y mapas para jugar con amigos y familia!
           </p>
         </div>
 
-        {/* Player Profile Card (Nickname) */}
-        <div className="w-full bg-slate-900/70 backdrop-blur-xl border border-slate-800/80 p-4 rounded-2xl shadow-xl mb-6 space-y-2 transition-all">
-          <label className="text-xs font-semibold text-slate-400 flex items-center justify-between">
-            <span>Tu Apodo / Jugador</span>
-            <button 
-              type="button"
-              onClick={() => setNickname(`Explorador_${Math.floor(1000 + Math.random() * 9000)}`)}
-              className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 text-[11px] font-medium transition-colors"
-            >
-              <RefreshCw className="w-3 h-3" /> Aleatorio
-            </button>
-          </label>
-          <div className="relative">
+        {/* Player Profile & Avatar Selector Card */}
+        <div className="w-full bg-slate-900/80 backdrop-blur-xl border border-slate-800/80 p-4 rounded-3xl shadow-xl mb-4 space-y-3 transition-all">
+          
+          {/* Avatar Selector Horizontal Ribbon */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Smile className="w-3.5 h-3.5 text-amber-400" /> Elige tu Avatar
+              </span>
+              <span className="text-[11px] font-extrabold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20">
+                {selectedAvatar} Seleccionado
+              </span>
+            </label>
+
+            {/* Horizontal Scrollable Emoji Buttons */}
+            <div className="flex items-center gap-2 overflow-x-auto py-1 px-0.5 scrollbar-none">
+              {AVATAR_OPTIONS.map((emoji) => {
+                const isSelected = selectedAvatar === emoji
+                return (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => {
+                      setSelectedAvatar(emoji)
+                      localStorage.setItem('geo_royale_current_avatar', emoji)
+                    }}
+                    className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center text-xl sm:text-2xl shrink-0 transition-all duration-200 active:scale-95 ${
+                      isSelected
+                        ? 'bg-amber-400/20 border-2 border-amber-400 ring-2 ring-amber-400/30 scale-110 shadow-lg shadow-amber-400/20'
+                        : 'bg-slate-950/80 border border-slate-800 hover:border-slate-700 hover:bg-slate-900'
+                    }`}
+                  >
+                    {emoji}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Nickname Input */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
+              <span>Nombre de Jugador</span>
+              <button 
+                type="button"
+                onClick={() => setNickname(`Jugador_${Math.floor(1000 + Math.random() * 9000)}`)}
+                className="text-amber-400 hover:text-amber-300 flex items-center gap-1 text-[11px] font-semibold transition-colors"
+              >
+                <RefreshCw className="w-3 h-3" /> Aleatorio
+              </button>
+            </label>
             <input
               type="text"
               value={nickname}
-              onChange={(e) => setNickname(e.target.value)}
-              placeholder="Introduce tu nombre..."
+              onChange={(e) => {
+                setNickname(e.target.value)
+                localStorage.setItem('geo_royale_current_player', e.target.value)
+              }}
+              placeholder="Escribe tu apodo..."
               maxLength={20}
-              className="w-full bg-slate-950/80 border border-slate-700/60 rounded-xl px-4 py-3 text-sm text-slate-100 font-semibold focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all"
+              className="w-full bg-slate-950/90 border border-slate-700/60 rounded-2xl px-4 py-2.5 text-sm text-slate-100 font-extrabold focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20 transition-all shadow-inner"
             />
           </div>
+
         </div>
+
+        {/* Global Error Banner */}
+        {errorMessage && (
+          <div className="w-full bg-rose-500/15 border border-rose-500/40 p-3.5 rounded-2xl text-rose-300 text-xs flex items-center gap-2.5 mb-4 shadow-lg animate-in fade-in slide-in-from-top-2">
+            <AlertCircle className="w-5 h-5 shrink-0 text-rose-400" />
+            <span className="font-medium">{errorMessage}</span>
+          </div>
+        )}
 
         {/* Dynamic Mode Views */}
         <div className="w-full">
           
           {/* MAIN MENU MODE */}
           {mode === 'main' && (
-            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-300">
               
               {/* Join Game Button */}
               <button
                 type="button"
                 onClick={() => setMode('join')}
-                className="w-full group relative overflow-hidden bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-extrabold text-base py-4 px-6 rounded-2xl shadow-lg shadow-emerald-500/25 flex items-center justify-between transition-all active:scale-[0.98]"
+                className="w-full group relative overflow-hidden bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-black text-base py-3.5 px-6 rounded-3xl shadow-xl shadow-emerald-500/20 flex items-center justify-between transition-all active:scale-[0.98]"
               >
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-slate-950/20 text-slate-950">
+                  <div className="p-2 rounded-2xl bg-slate-950/20 text-slate-950">
                     <KeyRound className="w-5 h-5" />
                   </div>
                   <span className="tracking-wide">Unirse a Partida</span>
@@ -176,43 +294,130 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setMode('create')}
-                className="w-full group bg-slate-900/90 hover:bg-slate-800/90 border border-slate-700/80 text-slate-100 font-bold text-base py-4 px-6 rounded-2xl shadow-md flex items-center justify-between transition-all active:scale-[0.98]"
+                className="w-full group bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-100 font-extrabold text-base py-3.5 px-6 rounded-3xl shadow-lg flex items-center justify-between transition-all active:scale-[0.98]"
               >
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+                  <div className="p-2 rounded-2xl bg-amber-500/10 text-amber-400">
                     <Users className="w-5 h-5" />
                   </div>
                   <span className="tracking-wide">Crear Sala</span>
                 </div>
-                <Sparkles className="w-5 h-5 text-emerald-400 group-hover:rotate-12 transition-transform" />
+                <Sparkles className="w-5 h-5 text-amber-400 group-hover:rotate-12 transition-transform" />
               </button>
 
             </div>
           )}
 
-          {/* JOIN ROOM MODE (PIN ENTRY) */}
-          {mode === 'join' && (
-            <div className="bg-slate-900/90 backdrop-blur-xl border border-slate-800 p-6 rounded-2xl shadow-2xl space-y-6 animate-in fade-in zoom-in-95 duration-200">
+          {/* CREATE ROOM MODE (WITH DYNAMIC CATEGORY THEMES) */}
+          {mode === 'create' && (
+            <div className="bg-slate-900/90 backdrop-blur-xl border border-slate-800 p-5 rounded-3xl shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
               
-              {/* Top Header inside card */}
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
                 <button
                   type="button"
                   onClick={() => setMode('main')}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-slate-200 transition-colors"
+                  className="inline-flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-200 transition-colors"
                 >
                   <ChevronLeft className="w-4 h-4" /> Volver
                 </button>
-                <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Unirse con PIN</span>
+                <span className="text-xs font-black uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                  <Layers className="w-4 h-4" /> Elige la Temática
+                </span>
+              </div>
+
+              <form onSubmit={handleCreateSubmit} className="space-y-4">
+                
+                {/* 2x2 Dynamic Theme Category Cards Grid */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  {(Object.keys(GAME_CATEGORIES) as CategoryKey[]).map((key) => {
+                    const cat = GAME_CATEGORIES[key]
+                    const Icon = categoryIconMap[key] || Globe
+                    const isSelected = selectedCategory === key
+
+                    return (
+                      <div
+                        key={key}
+                        onClick={() => setSelectedCategory(key)}
+                        className={`p-3.5 rounded-2xl border transition-all duration-300 cursor-pointer flex flex-col justify-between text-left space-y-2 relative overflow-hidden ${
+                          isSelected
+                            ? `${cat.theme.cardBg} ${cat.theme.activeBorder} shadow-xl scale-[1.02]`
+                            : 'bg-slate-950/70 border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/70'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <div className={`p-2 rounded-xl border ${cat.badgeColor}`}>
+                            <Icon className="w-4 h-4" />
+                          </div>
+
+                          {isSelected && (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 animate-in zoom-in" />
+                          )}
+                        </div>
+
+                        <div>
+                          <h4 className={`text-xs sm:text-sm font-black ${isSelected ? 'text-white' : 'text-slate-200'}`}>
+                            {cat.name}
+                          </h4>
+                          <p className="text-[10px] text-slate-300 leading-tight mt-1 line-clamp-2 font-medium">
+                            {cat.description}
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Selected Category Summary Banner */}
+                <div className="bg-slate-950/90 border border-slate-800/80 p-2.5 rounded-2xl text-center text-xs text-slate-200 font-bold">
+                  Modo Seleccionado: <span className="text-amber-400">{activeCategoryConfig.name}</span>
+                </div>
+
+                {/* Submit Create Button */}
+                <button
+                  type="submit"
+                  disabled={isCreating}
+                  className={`w-full py-3.5 px-6 bg-gradient-to-r ${currentTheme.buttonClass} font-black text-base rounded-3xl shadow-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98]`}
+                >
+                  {isCreating ? (
+                    <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Sparkles className="w-5 h-5" />
+                      <span>Crear Sala y Generar PIN</span>
+                    </>
+                  )}
+                </button>
+
+              </form>
+            </div>
+          )}
+
+          {/* JOIN ROOM MODE (PIN ENTRY) */}
+          {mode === 'join' && (
+            <div className="bg-slate-900/90 backdrop-blur-xl border border-slate-800 p-5 rounded-3xl shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+              
+              {/* Top Header inside card */}
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('main')
+                    setErrorMessage(null)
+                  }}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" /> Volver
+                </button>
+                <span className="text-xs font-black uppercase tracking-wider text-emerald-400">Unirse con PIN</span>
               </div>
 
               {/* PIN Code Fields */}
-              <form onSubmit={handleJoinSubmit} className="space-y-6">
+              <form onSubmit={handleJoinSubmit} className="space-y-5">
                 <div className="space-y-2 text-center">
-                  <p className="text-sm text-slate-300 font-medium">Introduce el PIN de 4 dígitos</p>
+                  <p className="text-sm text-slate-200 font-bold">Introduce el PIN de 4 dígitos</p>
                   
                   {/* 4 Digit Slots */}
-                  <div className="flex justify-center gap-3 pt-2">
+                  <div className="flex justify-center gap-2.5 pt-1">
                     {pin.map((digit, idx) => (
                       <input
                         key={idx}
@@ -224,7 +429,7 @@ export default function Home() {
                         value={digit}
                         onChange={(e) => handlePinChange(idx, e.target.value)}
                         onKeyDown={(e) => handleKeyDown(idx, e)}
-                        className="w-14 h-16 sm:w-16 sm:h-20 bg-slate-950 border-2 border-slate-700/80 rounded-2xl text-center text-2xl sm:text-3xl font-mono font-bold text-emerald-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 focus:outline-none transition-all shadow-inner"
+                        className="w-13 h-16 sm:w-16 sm:h-20 bg-slate-950 border-2 border-slate-700/80 rounded-2xl text-center text-2xl sm:text-3xl font-mono font-black text-emerald-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 focus:outline-none transition-all shadow-inner"
                       />
                     ))}
                   </div>
@@ -234,9 +439,9 @@ export default function Home() {
                 <button
                   type="submit"
                   disabled={!isPinComplete || isJoining}
-                  className={`w-full py-4 px-6 rounded-2xl font-extrabold text-base flex items-center justify-center gap-2 transition-all shadow-lg ${
+                  className={`w-full py-3.5 px-6 rounded-3xl font-black text-base flex items-center justify-center gap-2 transition-all shadow-xl ${
                     isPinComplete && !isJoining
-                      ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 shadow-emerald-500/25 hover:from-emerald-400 hover:to-teal-400 active:scale-[0.98]'
+                      ? 'bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 text-slate-950 hover:from-emerald-300 hover:to-cyan-300 active:scale-[0.98]'
                       : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/50'
                   }`}
                 >
@@ -253,108 +458,14 @@ export default function Home() {
             </div>
           )}
 
-          {/* CREATE ROOM MODE */}
-          {mode === 'create' && (
-            <div className="bg-slate-900/90 backdrop-blur-xl border border-slate-800 p-6 rounded-2xl shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
-              
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <button
-                  type="button"
-                  onClick={() => setMode('main')}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-slate-200 transition-colors"
-                >
-                  <ChevronLeft className="w-4 h-4" /> Volver
-                </button>
-                <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">Configurar Sala</span>
-              </div>
-
-              <form onSubmit={handleCreateSubmit} className="space-y-4">
-                
-                {/* Rondas */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-400">Número de Rondas</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[3, 5, 10].map((num) => (
-                      <button
-                        key={num}
-                        type="button"
-                        onClick={() => setRounds(num)}
-                        className={`py-2 rounded-xl text-xs font-bold border transition-all ${
-                          rounds === num
-                            ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400'
-                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                        }`}
-                      >
-                        {num} Rondas
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Tiempo */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-400">Tiempo por Ronda</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[30, 60, 90].map((seconds) => (
-                      <button
-                        key={seconds}
-                        type="button"
-                        onClick={() => setTimePerRound(seconds)}
-                        className={`py-2 rounded-xl text-xs font-bold border transition-all ${
-                          timePerRound === seconds
-                            ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400'
-                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                        }`}
-                      >
-                        {seconds}s
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Tipo de Mapa */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-400">Tipo de Mapa</label>
-                  <select
-                    value={mapType}
-                    onChange={(e) => setMapType(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-200 focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value="Mundo">Mundo (Países y Capitales)</option>
-                    <option value="España">España (Provincias y Comunidades)</option>
-                    <option value="Monumentos">Monumentos Famosos</option>
-                  </select>
-                </div>
-
-                {/* Submit Create Button */}
-                <button
-                  type="submit"
-                  disabled={isCreating}
-                  className="w-full mt-2 py-4 px-6 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-extrabold text-base rounded-2xl shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-                >
-                  {isCreating ? (
-                    <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      <Sparkles className="w-5 h-5" />
-                      <span>Crear Sala Privada</span>
-                    </>
-                  )}
-                </button>
-
-              </form>
-            </div>
-          )}
-
         </div>
 
       </main>
 
       {/* Footer Info */}
-      <footer className="w-full max-w-md text-center py-3 z-10">
-        <p className="text-[11px] text-slate-500 flex items-center justify-center gap-1">
-          <Trophy className="w-3.5 h-3.5 text-amber-400" />
-          <span>Geo-Royale • Partidas Privadas con PIN de 4 Dígitos</span>
+      <footer className="w-full max-w-md text-center py-2 z-10">
+        <p className="text-[11px] text-slate-400 font-medium">
+          Geo-Royale • Partidas divertidas para todos en tiempo real
         </p>
       </footer>
 
