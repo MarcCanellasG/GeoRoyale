@@ -27,6 +27,9 @@ export interface CategoryTheme {
   badgeClass: string
   buttonClass: string
   heroTitleGradient: string
+  glowColor: string
+  bannerBg: string
+  themeTagline: string
 }
 
 export interface CategoryMap {
@@ -46,19 +49,22 @@ export const GAME_CATEGORIES: Record<CategoryKey, CategoryMap> = {
   geografia: {
     id: 'geografia',
     name: 'Geografía Mundial',
-    subtitle: 'Mapa: Geografía y Naturaleza',
-    description: 'Países, capitales, continentes y mapas del mundo.',
+    subtitle: 'Expedición Océano & Selva',
+    description: 'Países, capitales, relieves e islas del planeta.',
     iconName: 'Globe',
     badgeColor: 'text-emerald-300 border-emerald-500/40 bg-emerald-500/15',
     theme: {
-      bgGradient: 'from-slate-950 via-teal-950/40 to-slate-950',
-      cardBg: 'bg-teal-950/30 backdrop-blur-xl',
-      cardBorder: 'border-teal-500/20',
-      activeBorder: 'border-emerald-400 ring-2 ring-emerald-400/30',
+      bgGradient: 'from-slate-950 via-teal-950/60 to-slate-950',
+      cardBg: 'bg-teal-950/40 backdrop-blur-xl',
+      cardBorder: 'border-teal-500/30',
+      activeBorder: 'border-emerald-400 ring-2 ring-emerald-400/40',
       accentGradient: 'from-emerald-400 via-teal-300 to-cyan-400',
-      badgeClass: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-      buttonClass: 'from-emerald-400 to-teal-500 hover:from-emerald-300 hover:to-teal-400 text-slate-950',
-      heroTitleGradient: 'from-emerald-300 via-teal-200 to-cyan-300'
+      badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm',
+      buttonClass: 'from-emerald-400 via-teal-400 to-cyan-400 hover:from-emerald-300 hover:to-teal-300 text-slate-950 shadow-emerald-500/20',
+      heroTitleGradient: 'from-emerald-300 via-teal-200 to-cyan-300',
+      glowColor: 'bg-emerald-500/15',
+      bannerBg: 'bg-gradient-to-r from-emerald-900/60 via-teal-900/40 to-slate-900/80',
+      themeTagline: '🌍 Expedición Terrestre & Cartografía'
     },
     levels: [
       {
@@ -75,8 +81,8 @@ export const GAME_CATEGORIES: Record<CategoryKey, CategoryMap> = {
         subzones: [
           {
             id: 'nodo-sig',
-            name: 'El Nodo SIG',
-            description: 'Núcleo cartográfico supremo.'
+            name: 'Cima de los Antípodas',
+            description: 'Relieve y coordenadas extremas del globo.'
           }
         ]
       },
@@ -95,12 +101,12 @@ export const GAME_CATEGORIES: Record<CategoryKey, CategoryMap> = {
           {
             id: 'cumbre-geopolitica',
             name: 'Cumbre Geopolítica',
-            description: 'Fronteras complejas y disputas.'
+            description: 'Fronteras complejas y soberanías.'
           },
           {
             id: 'cuenca-regional',
-            name: 'Cuenca Regional',
-            description: 'Hidrografía y sistemas fluviales.'
+            name: 'Cuenca de los Ríos Supremos',
+            description: 'Grandes sistemas fluviales y mares.'
           }
         ]
       },
@@ -118,13 +124,13 @@ export const GAME_CATEGORIES: Record<CategoryKey, CategoryMap> = {
         subzones: [
           {
             id: 'metropolis-expansion',
-            name: 'Metrópolis en Expansión',
+            name: 'Metrópolis Mundiales',
             description: 'Megaciudades y densidad urbana.'
           },
           {
             id: 'reserva-recursos',
-            name: 'Reserva de Recursos',
-            description: 'Regiones de importancia energética.'
+            name: 'Valles de Recursos',
+            description: 'Regiones naturales y biomas.'
           }
         ]
       },
@@ -143,16 +149,16 @@ export const GAME_CATEGORIES: Record<CategoryKey, CategoryMap> = {
           {
             id: 'archipielago-fisico',
             name: 'Archipiélago Físico',
-            description: 'Islas y relieve básico.'
+            description: 'Islas principales y relieve costero.'
           },
           {
             id: 'praderas-demograficas',
             name: 'Praderas Demográficas',
-            description: 'Países y banderas icónicas.'
+            description: 'Banderas icónicas y países del mundo.'
           },
           {
             id: 'valles-cartograficos',
-            name: 'Valles Cartográficos',
+            name: 'Valles del Ecuador',
             description: 'Líneas ecuatoriales y polos.'
           }
         ]
@@ -162,19 +168,22 @@ export const GAME_CATEGORIES: Record<CategoryKey, CategoryMap> = {
   cultura_general: {
     id: 'cultura_general',
     name: 'Cultura General',
-    subtitle: 'Mapa: Arte, Cine y Letras',
-    description: 'Arte, cine, literatura, música y curiosidades.',
+    subtitle: 'Ateneo de las Artes & Letras',
+    description: 'Arte clásico, cine de culto, literatura y música.',
     iconName: 'BookOpen',
     badgeColor: 'text-purple-300 border-purple-500/40 bg-purple-500/15',
     theme: {
-      bgGradient: 'from-slate-950 via-purple-950/40 to-slate-950',
-      cardBg: 'bg-purple-950/30 backdrop-blur-xl',
-      cardBorder: 'border-purple-500/20',
-      activeBorder: 'border-purple-400 ring-2 ring-purple-400/30',
-      accentGradient: 'from-purple-400 via-pink-300 to-indigo-300',
-      badgeClass: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
-      buttonClass: 'from-purple-400 to-indigo-500 hover:from-purple-300 hover:to-indigo-400 text-slate-950',
-      heroTitleGradient: 'from-purple-300 via-pink-200 to-indigo-300'
+      bgGradient: 'from-slate-950 via-purple-950/60 to-slate-950',
+      cardBg: 'bg-purple-950/40 backdrop-blur-xl',
+      cardBorder: 'border-purple-500/30',
+      activeBorder: 'border-purple-400 ring-2 ring-purple-400/40',
+      accentGradient: 'from-amber-300 via-purple-300 to-pink-400',
+      badgeClass: 'bg-purple-500/20 text-purple-300 border-purple-500/40 shadow-sm',
+      buttonClass: 'from-purple-400 via-pink-400 to-amber-300 hover:from-purple-300 hover:to-amber-200 text-slate-950 shadow-purple-500/20',
+      heroTitleGradient: 'from-purple-300 via-pink-200 to-amber-200',
+      glowColor: 'bg-purple-500/15',
+      bannerBg: 'bg-gradient-to-r from-purple-900/60 via-indigo-900/40 to-slate-900/80',
+      themeTagline: '📚 Ateneo de Bellas Artes & Sabiduría'
     },
     levels: [
       {
@@ -191,8 +200,8 @@ export const GAME_CATEGORIES: Record<CategoryKey, CategoryMap> = {
         subzones: [
           {
             id: 'panteon-sabiduria',
-            name: 'Panteón de la Sabiduría',
-            description: 'Desafío del saber universal.'
+            name: 'Panteón del Saber Universal',
+            description: 'El desafío definitivo del conocimiento.'
           }
         ]
       },
@@ -210,13 +219,13 @@ export const GAME_CATEGORIES: Record<CategoryKey, CategoryMap> = {
         subzones: [
           {
             id: 'galeria-bellas-artes',
-            name: 'Galería de Bellas Artes',
-            description: 'Obras maestras y escultura.'
+            name: 'Galería de Obras Maestras',
+            description: 'Pintura, escultura y museos.'
           },
           {
             id: 'laboratorio-filosofico',
-            name: 'Laboratorio Filosófico',
-            description: 'Corrientes de pensamiento.'
+            name: 'Salón Filosófico',
+            description: 'Grandes pensadores e ideas.'
           }
         ]
       },
@@ -234,13 +243,13 @@ export const GAME_CATEGORIES: Record<CategoryKey, CategoryMap> = {
         subzones: [
           {
             id: 'teatro-literario',
-            name: 'Teatro Literario',
-            description: 'Dramaturgos y premios Nobel.'
+            name: 'Teatro de las Letras',
+            description: 'Premios Nobel y clásicos.'
           },
           {
             id: 'estudio-cinematografico',
-            name: 'Estudio Cinematográfico',
-            description: 'Cine de culto y directores.'
+            name: 'Estudio de Cine de Culto',
+            description: 'Directores, bandas sonoras y séptimo arte.'
           }
         ]
       },
@@ -259,17 +268,17 @@ export const GAME_CATEGORIES: Record<CategoryKey, CategoryMap> = {
           {
             id: 'plaza-pop',
             name: 'Plaza Cultura Pop',
-            description: 'Personajes y canciones popular.'
+            description: 'Música, iconos modernos y tendencias.'
           },
           {
             id: 'museo-tradiciones',
-            name: 'Museo Tradiciones',
-            description: 'Gastronomía y festividades.'
+            name: 'Museo de Tradiciones',
+            description: 'Gastronomía y patrimonio cultural.'
           },
           {
             id: 'salon-inventos',
-            name: 'Salón de Inventos',
-            description: 'Creaciones del día a día.'
+            name: 'Salón de Grandes Inventos',
+            description: 'Descubrimientos que cambiaron el mundo.'
           }
         ]
       }
@@ -277,20 +286,23 @@ export const GAME_CATEGORIES: Record<CategoryKey, CategoryMap> = {
   },
   deportes: {
     id: 'deportes',
-    name: 'Deportes',
-    subtitle: 'Mapa: Competición y Leyendas',
-    description: 'JJ.OO., fútbol, F1, tenis y leyendas del deporte.',
+    name: 'Deportes & Competición',
+    subtitle: 'Arena Olímpica de Campeones',
+    description: 'Juegos Olímpicos, fútbol, F1, tenis y leyendas.',
     iconName: 'Trophy',
     badgeColor: 'text-amber-300 border-amber-500/40 bg-amber-500/15',
     theme: {
-      bgGradient: 'from-slate-950 via-amber-950/40 to-slate-950',
-      cardBg: 'bg-amber-950/30 backdrop-blur-xl',
-      cardBorder: 'border-amber-500/20',
-      activeBorder: 'border-amber-400 ring-2 ring-amber-400/30',
-      accentGradient: 'from-amber-400 via-orange-300 to-yellow-300',
-      badgeClass: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
-      buttonClass: 'from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-slate-950',
-      heroTitleGradient: 'from-amber-300 via-orange-200 to-yellow-300'
+      bgGradient: 'from-slate-950 via-amber-950/60 to-slate-950',
+      cardBg: 'bg-amber-950/40 backdrop-blur-xl',
+      cardBorder: 'border-amber-500/30',
+      activeBorder: 'border-amber-400 ring-2 ring-amber-400/40',
+      accentGradient: 'from-amber-400 via-orange-400 to-yellow-300',
+      badgeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm',
+      buttonClass: 'from-amber-400 via-orange-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 shadow-amber-500/20',
+      heroTitleGradient: 'from-amber-300 via-orange-200 to-yellow-300',
+      glowColor: 'bg-amber-500/15',
+      bannerBg: 'bg-gradient-to-r from-amber-900/60 via-orange-900/40 to-slate-900/80',
+      themeTagline: '🏆 Arena de Leyendas & Alta Competición'
     },
     levels: [
       {
@@ -307,8 +319,8 @@ export const GAME_CATEGORIES: Record<CategoryKey, CategoryMap> = {
         subzones: [
           {
             id: 'estadio-olimpico',
-            name: 'Estadio Olímpico Leyenda',
-            description: 'Records mundiales históricos.'
+            name: 'Panteón Olímpico de Leyendas',
+            description: 'Récords mundiales históricos e hitos épicos.'
           }
         ]
       },
@@ -326,13 +338,13 @@ export const GAME_CATEGORIES: Record<CategoryKey, CategoryMap> = {
         subzones: [
           {
             id: 'circuito-motor',
-            name: 'Circuito de Motor y F1',
-            description: 'Grandes Premios y escuderías.'
+            name: 'Circuito de F1 & Velodrómo',
+            description: 'Grandes Premios y escuderías míticas.'
           },
           {
             id: 'pista-gran-slam',
-            name: 'Pista Gran Slam',
-            description: 'Tenis de élite y torneos.'
+            name: 'Pistas de Grand Slam',
+            description: 'Tenis de élite y finales históricas.'
           }
         ]
       },
@@ -350,13 +362,13 @@ export const GAME_CATEGORIES: Record<CategoryKey, CategoryMap> = {
         subzones: [
           {
             id: 'cancha-baloncesto',
-            name: 'Cancha Baloncesto NBA',
-            description: 'Anillos y estrellas del basket.'
+            name: 'Cancha NBA & Basket World',
+            description: 'Anillos de campeón y estrellas.'
           },
           {
             id: 'puerto-nautico',
             name: 'Puerto Náutico & Ciclismo',
-            description: 'Grandes vueltas y regatas.'
+            description: 'Grandes vueltas y regatas internacionales.'
           }
         ]
       },
@@ -374,18 +386,18 @@ export const GAME_CATEGORIES: Record<CategoryKey, CategoryMap> = {
         subzones: [
           {
             id: 'campo-futbol',
-            name: 'Campo de Fútbol Base',
-            description: 'Mundiales, clubes y reglas.'
+            name: 'Estadio de Fútbol Base',
+            description: 'Mundiales, clubes y reglas del balón.'
           },
           {
             id: 'pista-atletismo',
-            name: 'Pista Atletismo Popular',
-            description: 'Carreras, saltos y pruebas.'
+            name: 'Pista de Atletismo Popular',
+            description: 'Velocidad, maratón y saltos.'
           },
           {
             id: 'polideportivo-general',
-            name: 'Polideportivo General',
-            description: 'Balonmano, natación y equipo.'
+            name: 'Polideportivo Multidisciplina',
+            description: 'Natación, balonmano y equipo.'
           }
         ]
       }
@@ -394,19 +406,22 @@ export const GAME_CATEGORIES: Record<CategoryKey, CategoryMap> = {
   historia: {
     id: 'historia',
     name: 'Historia Universal',
-    subtitle: 'Mapa: Civilizaciones del Pasado',
-    description: 'Imperios antiguos, guerras y momentos clave.',
+    subtitle: 'Panteón de los Imperios',
+    description: 'Civilizaciones antiguas, batallas y grandes eras.',
     iconName: 'Landmark',
-    badgeColor: 'text-cyan-300 border-cyan-500/40 bg-cyan-500/15',
+    badgeColor: 'text-rose-300 border-rose-500/40 bg-rose-500/15',
     theme: {
-      bgGradient: 'from-slate-950 via-rose-950/30 to-slate-950',
-      cardBg: 'bg-rose-950/20 backdrop-blur-xl',
-      cardBorder: 'border-rose-500/20',
-      activeBorder: 'border-rose-400 ring-2 ring-rose-400/30',
+      bgGradient: 'from-slate-950 via-rose-950/60 to-slate-950',
+      cardBg: 'bg-rose-950/40 backdrop-blur-xl',
+      cardBorder: 'border-rose-500/30',
+      activeBorder: 'border-rose-400 ring-2 ring-rose-400/40',
       accentGradient: 'from-rose-400 via-amber-300 to-orange-300',
-      badgeClass: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
-      buttonClass: 'from-rose-400 to-amber-500 hover:from-rose-300 hover:to-amber-400 text-slate-950',
-      heroTitleGradient: 'from-rose-300 via-amber-200 to-orange-300'
+      badgeClass: 'bg-rose-500/20 text-rose-300 border-rose-500/40 shadow-sm',
+      buttonClass: 'from-rose-400 via-amber-400 to-orange-400 hover:from-rose-300 hover:to-amber-300 text-slate-950 shadow-rose-500/20',
+      heroTitleGradient: 'from-rose-300 via-amber-200 to-orange-300',
+      glowColor: 'bg-rose-500/15',
+      bannerBg: 'bg-gradient-to-r from-rose-900/60 via-amber-900/40 to-slate-900/80',
+      themeTagline: '🏛️ Panteón de las Civilizaciones & Reyes'
     },
     levels: [
       {
@@ -423,8 +438,8 @@ export const GAME_CATEGORIES: Record<CategoryKey, CategoryMap> = {
         subzones: [
           {
             id: 'archivo-imperios',
-            name: 'Archivo de los Imperios',
-            description: 'Grandes dinastías y tratados.'
+            name: 'Archivo Secreto de los Imperios',
+            description: 'Grandes dinastías, tratados y coronaciones.'
           }
         ]
       },
@@ -442,13 +457,13 @@ export const GAME_CATEGORIES: Record<CategoryKey, CategoryMap> = {
         subzones: [
           {
             id: 'frente-guerra-mundial',
-            name: 'Frente Guerras Mundiales',
-            description: 'Estrategias y el Siglo XX.'
+            name: 'Frente del Siglo XX',
+            description: 'Guerras mundiales y pactos internacionales.'
           },
           {
             id: 'corte-renacentista',
             name: 'Corte Renacentista',
-            description: 'Ilustración y monarquías.'
+            description: 'Ilustración, revoluciones y dinastías.'
           }
         ]
       },
@@ -466,13 +481,13 @@ export const GAME_CATEGORIES: Record<CategoryKey, CategoryMap> = {
         subzones: [
           {
             id: 'castillo-medieval',
-            name: 'Castillo Medieval',
-            description: 'Cruzadas y caballeros.'
+            name: 'Fortaleza Medieval',
+            description: 'Cruzadas, feudos y orden militar.'
           },
           {
             id: 'foro-romano',
-            name: 'Foro Romano y Atenas',
-            description: 'Repúblicas y mitología.'
+            name: 'Foro Romano y Acrópolis',
+            description: 'Imperio Romano, Grecia e ideología.'
           }
         ]
       },
@@ -490,18 +505,18 @@ export const GAME_CATEGORIES: Record<CategoryKey, CategoryMap> = {
         subzones: [
           {
             id: 'piramides-egipto',
-            name: 'Pirámides de Egipto',
-            description: 'Faraones y civilizaciones.'
+            name: 'Valle de los Faraones',
+            description: 'Egipto Antiguo, Mesopotamia y jeroglíficos.'
           },
           {
             id: 'cueva-prehistoria',
-            name: 'Cueva Prehistoria',
-            description: 'Fuego y herramientas.'
+            name: 'Santuario Prehistórico',
+            description: 'Primeros homínidos, fuego y pintura rupestre.'
           },
           {
             id: 'ruta-descubrimientos',
-            name: 'Ruta Descubrimientos',
-            description: 'Exploradores y viajes.'
+            name: 'Ruta de los Exploradores',
+            description: 'Navegación y la Era de los Descubrimientos.'
           }
         ]
       }

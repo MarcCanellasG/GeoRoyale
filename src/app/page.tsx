@@ -2,9 +2,19 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Globe, Users, KeyRound, Sparkles, ArrowRight, MapPin, RefreshCw, ChevronLeft, AlertCircle, Layers, BookOpen, Trophy, Landmark, CheckCircle2, Gamepad2, Smile } from 'lucide-react'
-import { checkRoomExists, joinOrCreateRoom, getRoomCategoryKey } from '@/lib/supabase/playersService'
+import { Globe, Users, KeyRound, Sparkles, ArrowRight, MapPin, RefreshCw, ChevronLeft, AlertCircle, Layers, BookOpen, Trophy, Landmark, CheckCircle2, Gamepad2, Smile, Flame, ShieldAlert, Zap, Compass, Swords, Crown } from 'lucide-react'
+import { 
+  checkRoomExists, 
+  joinOrCreateRoom, 
+  getRoomCategoryKey,
+  getRoomDifficultyMode,
+  getTabPlayerName,
+  setTabPlayerName,
+  getTabAvatar,
+  setTabAvatar
+} from '@/lib/supabase/playersService'
 import { GAME_CATEGORIES, CategoryKey } from '@/config/mapConfig'
+import { DIFFICULTY_SETTINGS, DifficultyMode } from '@/config/gameConfig'
 
 type ScreenMode = 'main' | 'join' | 'create'
 
@@ -17,6 +27,7 @@ export default function Home() {
   const [selectedAvatar, setSelectedAvatar] = useState<string>('🦊')
   const [pin, setPin] = useState<string[]>(['', '', '', ''])
   const [selectedCategory, setSelectedCategory] = useState<CategoryKey>('geografia')
+  const [selectedDifficulty, setSelectedDifficulty] = useState<DifficultyMode>('normal')
   const [isJoining, setIsJoining] = useState<boolean>(false)
   const [isCreating, setIsCreating] = useState<boolean>(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -33,16 +44,18 @@ export default function Home() {
     useRef<HTMLInputElement>(null)
   ]
 
-  // Pre-fill a fun default nickname and avatar if stored
+  // Pre-fill tab-isolated default nickname and avatar
   useEffect(() => {
-    const savedName = localStorage.getItem('geo_royale_current_player')
-    const savedAvatar = localStorage.getItem('geo_royale_current_avatar')
+    const savedName = getTabPlayerName()
+    const savedAvatar = getTabAvatar()
     
     if (savedName) {
       setNickname(savedName)
     } else {
       const randomSuffix = Math.floor(1000 + Math.random() * 9000)
-      setNickname(`Jugador_${randomSuffix}`)
+      const newNick = `Explorador_${randomSuffix}`
+      setNickname(newNick)
+      setTabPlayerName(newNick)
     }
 
     if (savedAvatar) {
@@ -50,6 +63,7 @@ export default function Home() {
     } else {
       const randomAvatar = AVATAR_OPTIONS[Math.floor(Math.random() * AVATAR_OPTIONS.length)]
       setSelectedAvatar(randomAvatar)
+      setTabAvatar(randomAvatar)
     }
   }, [])
 
@@ -84,7 +98,7 @@ export default function Home() {
     }
   }
 
-  // Handle Join Submission (Invitado) - 100% Non-Blocking & Instant
+  // Handle Join Submission (Invitado) - 100% Supabase Realtime Sync
   const handleJoinSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setErrorMessage(null)
@@ -92,11 +106,11 @@ export default function Home() {
     const fullPin = pin.join('')
     if (fullPin.length !== 4) return
 
-    const playerNick = nickname.trim() || `Jugador_${Math.floor(1000 + Math.random() * 9000)}`
+    const playerNick = nickname.trim() || `Explorador_${Math.floor(1000 + Math.random() * 9000)}`
     setIsJoining(true)
 
     try {
-      // 1. Verify if room exists in Supabase/local (Max 400ms timeout)
+      // 1. Verify if room exists in Supabase
       const roomExists = await checkRoomExists(fullPin)
 
       if (!roomExists) {
@@ -105,15 +119,16 @@ export default function Home() {
         return
       }
 
-      // 2. Fetch the host's room category_key (Max 400ms timeout)
+      // 2. Fetch the host's room category_key & difficulty_mode from Supabase
       const roomCategory = await getRoomCategoryKey(fullPin)
+      const roomDifficulty = await getRoomDifficultyMode(fullPin)
 
-      // 3. Register guest player with the SAME room category_key & selectedAvatar
-      joinOrCreateRoom(fullPin, playerNick, roomCategory, selectedAvatar)
-      localStorage.setItem('geo_royale_current_player', playerNick)
-      localStorage.setItem('geo_royale_current_avatar', selectedAvatar)
+      // 3. Register guest player in Supabase active_players
+      await joinOrCreateRoom(fullPin, playerNick, roomCategory, selectedAvatar, roomDifficulty)
+      setTabPlayerName(playerNick)
+      setTabAvatar(selectedAvatar)
 
-      // 4. Instant navigation to /sala/[pin]
+      // 4. Navigation to /sala/[pin]
       setIsJoining(false)
       router.push(`/sala/${fullPin}`)
     } catch (error) {
@@ -123,30 +138,30 @@ export default function Home() {
     }
   }
 
-  // Handle Create Room Submission (Anfitrión) - 100% Non-Blocking & Instant
-  const handleCreateSubmit = (e: React.FormEvent) => {
+  // Handle Create Room Submission (Anfitrión) - 100% Supabase Realtime Sync
+  const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setErrorMessage(null)
 
-    const playerNick = nickname.trim() || `Host_${Math.floor(1000 + Math.random() * 9000)}`
+    const playerNick = nickname.trim() || `Anfitrion_${Math.floor(1000 + Math.random() * 9000)}`
     setIsCreating(true)
 
     try {
       // 1. Generate random 4-digit PIN
       const generatedPin = Math.floor(1000 + Math.random() * 9000).toString()
 
-      // 2. Register host player with selectedCategory & selectedAvatar
-      joinOrCreateRoom(generatedPin, playerNick, selectedCategory, selectedAvatar)
-      localStorage.setItem('geo_royale_current_player', playerNick)
-      localStorage.setItem('geo_royale_current_avatar', selectedAvatar)
+      // 2. Register host player in Supabase active_players
+      await joinOrCreateRoom(generatedPin, playerNick, selectedCategory, selectedAvatar, selectedDifficulty)
+      setTabPlayerName(playerNick)
+      setTabAvatar(selectedAvatar)
 
-      // 3. Instant navigation to /sala/[pin]
+      // 3. Navigation to /sala/[pin]
       setIsCreating(false)
       router.push(`/sala/${generatedPin}`)
     } catch (error) {
       console.error('Error creating room:', error)
       setIsCreating(false)
-      setErrorMessage('Error al crear la sala.')
+      setErrorMessage('Error al crear la sala. Inténtalo de nuevo.')
     }
   }
 
@@ -160,20 +175,20 @@ export default function Home() {
   const isPinComplete = pin.every((digit) => digit !== '')
 
   return (
-    <div className={`min-h-screen bg-slate-950 bg-gradient-to-b ${currentTheme.bgGradient} text-slate-100 flex flex-col items-center justify-between p-4 sm:p-6 relative overflow-hidden font-sans transition-all duration-500 selection:bg-emerald-500 selection:text-slate-950`}>
+    <div className={`min-h-screen bg-slate-950 bg-gradient-to-b ${currentTheme.bgGradient} text-slate-100 flex flex-col items-center justify-between p-4 sm:p-6 relative overflow-hidden font-sans transition-all duration-700 selection:bg-amber-400 selection:text-slate-950`}>
       
-      {/* Dynamic Theme Glow Orbs */}
-      <div className="absolute inset-0 bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:24px_24px] opacity-25 pointer-events-none" />
-      <div className="absolute -top-32 -left-32 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none animate-pulse" />
-      <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none animate-pulse" />
+      {/* Category Theme Glow Orbs */}
+      <div className="absolute inset-0 bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
+      <div className={`absolute -top-36 -left-36 w-96 h-96 ${currentTheme.glowColor} rounded-full blur-3xl pointer-events-none animate-pulse`} />
+      <div className={`absolute -bottom-36 -right-36 w-96 h-96 ${currentTheme.glowColor} rounded-full blur-3xl pointer-events-none animate-pulse`} />
 
       {/* Top Header Status */}
       <header className="w-full max-w-md flex items-center justify-between z-10 pt-2 pb-3">
-        <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/80 border border-slate-800/80 text-xs font-bold text-slate-200 shadow-md backdrop-blur-md">
+        <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/80 border border-slate-800/80 text-xs font-black text-slate-200 shadow-md backdrop-blur-md">
           <Gamepad2 className="w-4 h-4 text-emerald-400" />
-          <span>Juego Multijugador</span>
+          <span>Geo-Royale Multijugador</span>
         </div>
-        <div className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border shadow-sm backdrop-blur-md transition-colors ${currentTheme.badgeClass}`}>
+        <div className={`flex items-center gap-1.5 text-xs font-black px-3.5 py-1.5 rounded-full border shadow-md backdrop-blur-md transition-colors ${currentTheme.badgeClass}`}>
           <span>{activeCategoryConfig.name}</span>
         </div>
       </header>
@@ -182,26 +197,26 @@ export default function Home() {
       <main className="w-full max-w-md flex-1 flex flex-col items-center justify-center z-10 py-2">
 
         {/* Friendly Hero Title */}
-        <div className="text-center space-y-1.5 mb-4 animate-fade-in">
-          <div className="inline-flex items-center justify-center p-3 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl mb-1">
-            <Sparkles className="w-7 h-7 text-amber-400 animate-spin-slow" />
+        <div className="text-center space-y-2 mb-4 animate-fade-in">
+          <div className="inline-flex items-center justify-center p-3.5 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-2xl mb-1">
+            <Crown className="w-8 h-8 text-amber-400 fill-amber-400/20" />
           </div>
           <h1 className={`text-4xl sm:text-5xl font-black tracking-wider bg-gradient-to-r ${currentTheme.heroTitleGradient} bg-clip-text text-transparent uppercase drop-shadow-md`}>
             GEO-ROYALE
           </h1>
-          <p className="text-slate-300 text-xs sm:text-sm max-w-xs mx-auto font-medium">
-            ¡El juego de preguntas y mapas para jugar con amigos y familia!
+          <p className="text-slate-300 text-xs sm:text-sm max-w-xs mx-auto font-medium leading-relaxed">
+            Conquista el mapa, responde preguntas con tus amigos y proclámate Campeón Royale.
           </p>
         </div>
 
         {/* Player Profile & Avatar Selector Card */}
-        <div className="w-full bg-slate-900/80 backdrop-blur-xl border border-slate-800/80 p-4 rounded-3xl shadow-xl mb-4 space-y-3 transition-all">
+        <div className={`w-full ${currentTheme.cardBg} backdrop-blur-xl border ${currentTheme.cardBorder} p-4 rounded-3xl shadow-xl mb-4 space-y-3 transition-all`}>
           
           {/* Avatar Selector Horizontal Ribbon */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
               <span className="flex items-center gap-1.5">
-                <Smile className="w-3.5 h-3.5 text-amber-400" /> Elige tu Avatar
+                <Smile className="w-3.5 h-3.5 text-amber-400" /> Tu Avatar
               </span>
               <span className="text-[11px] font-extrabold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20">
                 {selectedAvatar} Seleccionado
@@ -218,7 +233,7 @@ export default function Home() {
                     type="button"
                     onClick={() => {
                       setSelectedAvatar(emoji)
-                      localStorage.setItem('geo_royale_current_avatar', emoji)
+                      setTabAvatar(emoji)
                     }}
                     className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center text-xl sm:text-2xl shrink-0 transition-all duration-200 active:scale-95 ${
                       isSelected
@@ -236,10 +251,14 @@ export default function Home() {
           {/* Nickname Input */}
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-              <span>Nombre de Jugador</span>
+              <span>Tu Nombre en la Partida</span>
               <button 
                 type="button"
-                onClick={() => setNickname(`Jugador_${Math.floor(1000 + Math.random() * 9000)}`)}
+                onClick={() => {
+                  const newNick = `Explorador_${Math.floor(1000 + Math.random() * 9000)}`
+                  setNickname(newNick)
+                  setTabPlayerName(newNick)
+                }}
                 className="text-amber-400 hover:text-amber-300 flex items-center gap-1 text-[11px] font-semibold transition-colors"
               >
                 <RefreshCw className="w-3 h-3" /> Aleatorio
@@ -250,7 +269,7 @@ export default function Home() {
               value={nickname}
               onChange={(e) => {
                 setNickname(e.target.value)
-                localStorage.setItem('geo_royale_current_player', e.target.value)
+                setTabPlayerName(e.target.value)
               }}
               placeholder="Escribe tu apodo..."
               maxLength={20}
@@ -300,17 +319,17 @@ export default function Home() {
                   <div className="p-2 rounded-2xl bg-amber-500/10 text-amber-400">
                     <Users className="w-5 h-5" />
                   </div>
-                  <span className="tracking-wide">Crear Sala</span>
+                  <span className="tracking-wide">Crear Nueva Sala</span>
                 </div>
-                <Sparkles className="w-5 h-5 text-amber-400 group-hover:rotate-12 transition-transform" />
+                <Compass className="w-5 h-5 text-amber-400 group-hover:rotate-45 transition-transform" />
               </button>
 
             </div>
           )}
 
-          {/* CREATE ROOM MODE (WITH DYNAMIC CATEGORY THEMES) */}
+          {/* CREATE ROOM MODE (WITH CATEGORY AND DIFFICULTY SELECTOR) */}
           {mode === 'create' && (
-            <div className="bg-slate-900/90 backdrop-blur-xl border border-slate-800 p-5 rounded-3xl shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className={`bg-slate-900/90 backdrop-blur-xl border border-slate-800 p-5 rounded-3xl shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200`}>
               
               <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
                 <button
@@ -321,55 +340,101 @@ export default function Home() {
                   <ChevronLeft className="w-4 h-4" /> Volver
                 </button>
                 <span className="text-xs font-black uppercase tracking-wider text-amber-400 flex items-center gap-1">
-                  <Layers className="w-4 h-4" /> Elige la Temática
+                  <Layers className="w-4 h-4" /> Configuración de Sala
                 </span>
               </div>
 
               <form onSubmit={handleCreateSubmit} className="space-y-4">
                 
                 {/* 2x2 Dynamic Theme Category Cards Grid */}
-                <div className="grid grid-cols-2 gap-2.5">
-                  {(Object.keys(GAME_CATEGORIES) as CategoryKey[]).map((key) => {
-                    const cat = GAME_CATEGORIES[key]
-                    const Icon = categoryIconMap[key] || Globe
-                    const isSelected = selectedCategory === key
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-300 block mb-1">1. Elige el Tema del Mapa</label>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {(Object.keys(GAME_CATEGORIES) as CategoryKey[]).map((key) => {
+                      const cat = GAME_CATEGORIES[key]
+                      const Icon = categoryIconMap[key] || Globe
+                      const isSelected = selectedCategory === key
 
-                    return (
-                      <div
-                        key={key}
-                        onClick={() => setSelectedCategory(key)}
-                        className={`p-3.5 rounded-2xl border transition-all duration-300 cursor-pointer flex flex-col justify-between text-left space-y-2 relative overflow-hidden ${
-                          isSelected
-                            ? `${cat.theme.cardBg} ${cat.theme.activeBorder} shadow-xl scale-[1.02]`
-                            : 'bg-slate-950/70 border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/70'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between w-full">
-                          <div className={`p-2 rounded-xl border ${cat.badgeColor}`}>
-                            <Icon className="w-4 h-4" />
+                      return (
+                        <div
+                          key={key}
+                          onClick={() => setSelectedCategory(key)}
+                          className={`p-3 rounded-2xl border transition-all duration-300 cursor-pointer flex flex-col justify-between text-left space-y-2 relative overflow-hidden ${
+                            isSelected
+                              ? `${cat.theme.cardBg} ${cat.theme.activeBorder} shadow-xl scale-[1.02]`
+                              : 'bg-slate-950/70 border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/70'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <div className={`p-2 rounded-xl border ${cat.badgeColor}`}>
+                              <Icon className="w-4 h-4" />
+                            </div>
+
+                            {isSelected && (
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400 animate-in zoom-in" />
+                            )}
                           </div>
 
-                          {isSelected && (
-                            <CheckCircle2 className="w-4 h-4 text-emerald-400 animate-in zoom-in" />
-                          )}
+                          <div>
+                            <h4 className={`text-xs sm:text-sm font-black ${isSelected ? 'text-white' : 'text-slate-200'}`}>
+                              {cat.name}
+                            </h4>
+                            <p className="text-[10px] text-slate-300 leading-tight mt-1 line-clamp-2 font-medium">
+                              {cat.description}
+                            </p>
+                          </div>
                         </div>
-
-                        <div>
-                          <h4 className={`text-xs sm:text-sm font-black ${isSelected ? 'text-white' : 'text-slate-200'}`}>
-                            {cat.name}
-                          </h4>
-                          <p className="text-[10px] text-slate-300 leading-tight mt-1 line-clamp-2 font-medium">
-                            {cat.description}
-                          </p>
-                        </div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
+                  </div>
                 </div>
 
-                {/* Selected Category Summary Banner */}
+                {/* Difficulty Mode Selector Toggle */}
+                <div className="space-y-1.5 pt-1">
+                  <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5 text-amber-400" /> 2. Modo de Dificultad
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono font-bold">
+                      {DIFFICULTY_SETTINGS[selectedDifficulty].badgeText}
+                    </span>
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950 border border-slate-800 rounded-2xl">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDifficulty('normal')}
+                      className={`py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                        selectedDifficulty === 'normal'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 shadow-md'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <span>Modo Normal</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDifficulty('hard')}
+                      className={`py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                        selectedDifficulty === 'hard'
+                          ? 'bg-rose-500/20 text-rose-300 border border-rose-400/40 shadow-md ring-1 ring-rose-400/30'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <Flame className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Modo Hardcore</span>
+                    </button>
+                  </div>
+
+                  <p className="text-[10px] text-slate-400 font-medium px-1">
+                    {DIFFICULTY_SETTINGS[selectedDifficulty].description}
+                  </p>
+                </div>
+
+                {/* Selected Category & Difficulty Summary Banner */}
                 <div className="bg-slate-950/90 border border-slate-800/80 p-2.5 rounded-2xl text-center text-xs text-slate-200 font-bold">
-                  Modo Seleccionado: <span className="text-amber-400">{activeCategoryConfig.name}</span>
+                  Estilo: <span className="text-amber-400">{activeCategoryConfig.name}</span> • <span className="text-emerald-400">{DIFFICULTY_SETTINGS[selectedDifficulty].name}</span>
                 </div>
 
                 {/* Submit Create Button */}
@@ -382,8 +447,8 @@ export default function Home() {
                     <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
                   ) : (
                     <>
-                      <Sparkles className="w-5 h-5" />
-                      <span>Crear Sala y Generar PIN</span>
+                      <span>Crear Sala de Juego</span>
+                      <ArrowRight className="w-5 h-5" />
                     </>
                   )}
                 </button>
@@ -465,7 +530,7 @@ export default function Home() {
       {/* Footer Info */}
       <footer className="w-full max-w-md text-center py-2 z-10">
         <p className="text-[11px] text-slate-400 font-medium">
-          Geo-Royale • Partidas divertidas para todos en tiempo real
+          Geo-Royale • Juego de preguntas y mapas multijugador en tiempo real
         </p>
       </footer>
 
