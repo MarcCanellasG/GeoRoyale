@@ -123,3 +123,40 @@ export function playBuzzSound() {
     osc.stop(ctx.currentTime + 0.25)
   } catch {}
 }
+
+/**
+ * 5. Glorious fanfare sound for Victory Royale
+ */
+export function playVictoryFanfare() {
+  try {
+    const ctx = getAudioContext()
+    if (!ctx) return
+
+    // Fanfare arpeggio: C4, E4, G4, C5, G4, C5 (triumphant fanfare)
+    const fanfare = [
+      { freq: 261.63, time: 0.0, dur: 0.15 },
+      { freq: 329.63, time: 0.15, dur: 0.15 },
+      { freq: 392.00, time: 0.30, dur: 0.15 },
+      { freq: 523.25, time: 0.45, dur: 0.4 },
+      { freq: 392.00, time: 0.85, dur: 0.15 },
+      { freq: 523.25, time: 1.00, dur: 0.8 }
+    ]
+
+    fanfare.forEach(({ freq, time, dur }) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      osc.type = 'triangle'
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + time)
+
+      gain.gain.setValueAtTime(0.22, ctx.currentTime + time)
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + time + dur)
+
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+
+      osc.start(ctx.currentTime + time)
+      osc.stop(ctx.currentTime + time + dur)
+    })
+  } catch {}
+}

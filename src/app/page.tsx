@@ -2,16 +2,17 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Globe, Users, KeyRound, Sparkles, ArrowRight, MapPin, RefreshCw, ChevronLeft, AlertCircle, Layers, BookOpen, Trophy, Landmark, CheckCircle2, Gamepad2, Smile, Flame, ShieldAlert, Zap, Compass, Swords, Crown } from 'lucide-react'
+import { Globe, Users, KeyRound, Sparkles, ArrowRight, RefreshCw, ChevronLeft, AlertCircle, Layers, Crown, Shield, Flame, UserPlus, Zap, Gamepad2, Compass, Info, X, Clock, Heart, Skull, Plus, Minus } from 'lucide-react'
 import { 
   checkRoomExists, 
   joinOrCreateRoom, 
-  getRoomCategoryKey,
-  getRoomDifficultyMode,
-  getTabPlayerName,
-  setTabPlayerName,
-  getTabAvatar,
-  setTabAvatar
+  getRoomCategoryKey, 
+  getRoomDifficultyMode, 
+  getRoomMaxPlayers, 
+  getTabPlayerName, 
+  setTabPlayerName, 
+  getTabAvatar, 
+  setTabAvatar 
 } from '@/lib/supabase/playersService'
 import { GAME_CATEGORIES, CategoryKey } from '@/config/mapConfig'
 import { DIFFICULTY_SETTINGS, DifficultyMode } from '@/config/gameConfig'
@@ -19,6 +20,12 @@ import { DIFFICULTY_SETTINGS, DifficultyMode } from '@/config/gameConfig'
 type ScreenMode = 'main' | 'join' | 'create'
 
 const AVATAR_OPTIONS = ['🦊', '🤖', '👽', '🤠', '👻', '🦖', '🦁', '🚀', '👑', '🐼', '🦄', '🐯']
+const PLAYER_PRESETS = [
+  { label: 'Duelo', count: 2 },
+  { label: 'Squad', count: 4 },
+  { label: 'Grupo', count: 8 },
+  { label: 'Máx', count: 12 }
+]
 
 export default function Home() {
   const router = useRouter()
@@ -28,13 +35,13 @@ export default function Home() {
   const [pin, setPin] = useState<string[]>(['', '', '', ''])
   const [selectedCategory, setSelectedCategory] = useState<CategoryKey>('geografia')
   const [selectedDifficulty, setSelectedDifficulty] = useState<DifficultyMode>('normal')
+  const [selectedMaxPlayers, setSelectedMaxPlayers] = useState<number>(4)
   const [isJoining, setIsJoining] = useState<boolean>(false)
   const [isCreating, setIsCreating] = useState<boolean>(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [showDifficultyInfo, setShowDifficultyInfo] = useState<boolean>(false)
 
-  // Active Category Theme styling
   const activeCategoryConfig = GAME_CATEGORIES[selectedCategory] || GAME_CATEGORIES.geografia
-  const currentTheme = activeCategoryConfig.theme
 
   // Refs for 4-digit PIN input focus management
   const pinInputRefs = [
@@ -98,7 +105,7 @@ export default function Home() {
     }
   }
 
-  // Handle Join Submission (Invitado) - 100% Supabase Realtime Sync
+  // Handle Join Submission (Invitado)
   const handleJoinSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setErrorMessage(null)
@@ -119,12 +126,13 @@ export default function Home() {
         return
       }
 
-      // 2. Fetch the host's room category_key & difficulty_mode from Supabase
+      // 2. Fetch the host's room category_key, difficulty_mode & max_players from Supabase
       const roomCategory = await getRoomCategoryKey(fullPin)
       const roomDifficulty = await getRoomDifficultyMode(fullPin)
+      const roomMax = await getRoomMaxPlayers(fullPin)
 
       // 3. Register guest player in Supabase active_players
-      await joinOrCreateRoom(fullPin, playerNick, roomCategory, selectedAvatar, roomDifficulty)
+      await joinOrCreateRoom(fullPin, playerNick, roomCategory, selectedAvatar, roomDifficulty, roomMax)
       setTabPlayerName(playerNick)
       setTabAvatar(selectedAvatar)
 
@@ -138,7 +146,7 @@ export default function Home() {
     }
   }
 
-  // Handle Create Room Submission (Anfitrión) - 100% Supabase Realtime Sync
+  // Handle Create Room Submission (Anfitrión)
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setErrorMessage(null)
@@ -150,8 +158,8 @@ export default function Home() {
       // 1. Generate random 4-digit PIN
       const generatedPin = Math.floor(1000 + Math.random() * 9000).toString()
 
-      // 2. Register host player in Supabase active_players
-      await joinOrCreateRoom(generatedPin, playerNick, selectedCategory, selectedAvatar, selectedDifficulty)
+      // 2. Register host player in Supabase active_players with selectedMaxPlayers
+      await joinOrCreateRoom(generatedPin, playerNick, selectedCategory, selectedAvatar, selectedDifficulty, selectedMaxPlayers)
       setTabPlayerName(playerNick)
       setTabAvatar(selectedAvatar)
 
@@ -165,30 +173,24 @@ export default function Home() {
     }
   }
 
-  const categoryIconMap = {
-    geografia: Globe,
-    cultura_general: BookOpen,
-    deportes: Trophy,
-    historia: Landmark
-  }
-
   const isPinComplete = pin.every((digit) => digit !== '')
 
   return (
-    <div className={`min-h-screen bg-slate-950 bg-gradient-to-b ${currentTheme.bgGradient} text-slate-100 flex flex-col items-center justify-between p-4 sm:p-6 relative overflow-hidden font-sans transition-all duration-700 selection:bg-amber-400 selection:text-slate-950`}>
+    <div className="min-h-screen bg-[#0B0F19] text-white flex flex-col items-center justify-between p-4 sm:p-6 relative overflow-x-hidden font-sans selection:bg-indigo-500 selection:text-white">
       
-      {/* Category Theme Glow Orbs */}
-      <div className="absolute inset-0 bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:24px_24px] opacity-20 pointer-events-none" />
-      <div className={`absolute -top-36 -left-36 w-96 h-96 ${currentTheme.glowColor} rounded-full blur-3xl pointer-events-none animate-pulse`} />
-      <div className={`absolute -bottom-36 -right-36 w-96 h-96 ${currentTheme.glowColor} rounded-full blur-3xl pointer-events-none animate-pulse`} />
+      {/* Background Lighting & Glow Mesh */}
+      <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[550px] h-[350px] bg-blue-600/20 blur-[120px] pointer-events-none rounded-full" />
+      <div className="absolute -bottom-32 right-0 w-[400px] h-[300px] bg-indigo-600/10 blur-[100px] pointer-events-none rounded-full" />
+      <div className="absolute inset-0 bg-[radial-gradient(#ffffff08_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none" />
 
       {/* Top Header Status */}
       <header className="w-full max-w-md flex items-center justify-between z-10 pt-2 pb-3">
-        <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/80 border border-slate-800/80 text-xs font-black text-slate-200 shadow-md backdrop-blur-md">
-          <Gamepad2 className="w-4 h-4 text-emerald-400" />
-          <span>Geo-Royale Multijugador</span>
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.08] backdrop-blur-md text-xs font-semibold text-white/80 shadow-lg">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+          <span>Geo-Royale Online</span>
         </div>
-        <div className={`flex items-center gap-1.5 text-xs font-black px-3.5 py-1.5 rounded-full border shadow-md backdrop-blur-md transition-colors ${currentTheme.badgeClass}`}>
+        <div className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.08] backdrop-blur-md text-indigo-300 shadow-lg">
+          <Globe className="w-3.5 h-3.5 text-indigo-400" />
           <span>{activeCategoryConfig.name}</span>
         </div>
       </header>
@@ -196,93 +198,101 @@ export default function Home() {
       {/* Main Content Area */}
       <main className="w-full max-w-md flex-1 flex flex-col items-center justify-center z-10 py-2">
 
-        {/* Friendly Hero Title */}
-        <div className="text-center space-y-2 mb-4 animate-fade-in">
-          <div className="inline-flex items-center justify-center p-3.5 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-2xl mb-1">
-            <Crown className="w-8 h-8 text-amber-400 fill-amber-400/20" />
-          </div>
-          <h1 className={`text-4xl sm:text-5xl font-black tracking-wider bg-gradient-to-r ${currentTheme.heroTitleGradient} bg-clip-text text-transparent uppercase drop-shadow-md`}>
-            GEO-ROYALE
-          </h1>
-          <p className="text-slate-300 text-xs sm:text-sm max-w-xs mx-auto font-medium leading-relaxed">
-            Conquista el mapa, responde preguntas con tus amigos y proclámate Campeón Royale.
-          </p>
-        </div>
-
-        {/* Player Profile & Avatar Selector Card */}
-        <div className={`w-full ${currentTheme.cardBg} backdrop-blur-xl border ${currentTheme.cardBorder} p-4 rounded-3xl shadow-xl mb-4 space-y-3 transition-all`}>
-          
-          {/* Avatar Selector Horizontal Ribbon */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <Smile className="w-3.5 h-3.5 text-amber-400" /> Tu Avatar
-              </span>
-              <span className="text-[11px] font-extrabold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20">
-                {selectedAvatar} Seleccionado
-              </span>
-            </label>
-
-            {/* Horizontal Scrollable Emoji Buttons */}
-            <div className="flex items-center gap-2 overflow-x-auto py-1 px-0.5 scrollbar-none">
-              {AVATAR_OPTIONS.map((emoji) => {
-                const isSelected = selectedAvatar === emoji
-                return (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={() => {
-                      setSelectedAvatar(emoji)
-                      setTabAvatar(emoji)
-                    }}
-                    className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center text-xl sm:text-2xl shrink-0 transition-all duration-200 active:scale-95 ${
-                      isSelected
-                        ? 'bg-amber-400/20 border-2 border-amber-400 ring-2 ring-amber-400/30 scale-110 shadow-lg shadow-amber-400/20'
-                        : 'bg-slate-950/80 border border-slate-800 hover:border-slate-700 hover:bg-slate-900'
-                    }`}
-                  >
-                    {emoji}
-                  </button>
-                )
-              })}
+        {/* Hero Title & Crown (Only in Main Menu) */}
+        {mode === 'main' && (
+          <div className="text-center space-y-2 mb-6 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-white/[0.04] border border-white/[0.08] shadow-2xl backdrop-blur-md mb-2">
+              <Crown className="w-8 h-8 text-amber-400 fill-amber-400/20 drop-shadow-[0_0_12px_rgba(251,191,36,0.6)]" />
             </div>
+            <h1 className="text-4xl sm:text-5xl font-black tracking-wider text-white uppercase drop-shadow-[0_0_12px_rgba(255,255,255,0.3)]">
+              GEO-ROYALE
+            </h1>
           </div>
+        )}
 
-          {/* Nickname Input */}
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-              <span>Tu Nombre en la Partida</span>
-              <button 
-                type="button"
-                onClick={() => {
-                  const newNick = `Explorador_${Math.floor(1000 + Math.random() * 9000)}`
-                  setNickname(newNick)
-                  setTabPlayerName(newNick)
-                }}
-                className="text-amber-400 hover:text-amber-300 flex items-center gap-1 text-[11px] font-semibold transition-colors"
-              >
-                <RefreshCw className="w-3 h-3" /> Aleatorio
-              </button>
-            </label>
-            <input
-              type="text"
-              value={nickname}
-              onChange={(e) => {
-                setNickname(e.target.value)
-                setTabPlayerName(e.target.value)
-              }}
-              placeholder="Escribe tu apodo..."
-              maxLength={20}
-              className="w-full bg-slate-950/90 border border-slate-700/60 rounded-2xl px-4 py-2.5 text-sm text-slate-100 font-extrabold focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20 transition-all shadow-inner"
-            />
+        {/* Player Profile Setup Card (Only in Main Menu) */}
+        {mode === 'main' && (
+          <div className="w-full bg-white/[0.03] backdrop-blur-md border border-white/[0.08] shadow-2xl rounded-2xl p-4 sm:p-5 mb-5 space-y-4 animate-in fade-in duration-300">
+            
+            {/* Card Header */}
+            <div className="flex items-center justify-between border-b border-white/[0.06] pb-2.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-white/50 flex items-center gap-1.5">
+                <Gamepad2 className="w-3.5 h-3.5 text-indigo-400" /> Tu Perfil
+              </span>
+            </div>
+
+            {/* Avatar Horizontal Ribbon */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs font-semibold text-white/70">
+                <span>Elige tu Avatar</span>
+                <span className="text-[11px] text-indigo-400 font-bold">
+                  {selectedAvatar} Seleccionado
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 overflow-x-auto py-1 px-1 scrollbar-none">
+                {AVATAR_OPTIONS.map((emoji) => {
+                  const isSelected = selectedAvatar === emoji
+                  return (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => {
+                        setSelectedAvatar(emoji)
+                        setTabAvatar(emoji)
+                      }}
+                      className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-xl shrink-0 transition-all duration-200 active:scale-95 ${
+                        isSelected
+                          ? 'ring-2 ring-indigo-500 bg-indigo-500/20 scale-110 shadow-[0_0_15px_rgba(99,102,241,0.4)] grayscale-0 opacity-100 border border-indigo-400/50'
+                          : 'grayscale opacity-50 hover:grayscale-0 hover:opacity-100 bg-black/20 border border-white/[0.05]'
+                      }`}
+                    >
+                      {emoji}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Nickname Input */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs font-semibold text-white/70">
+                <span>Nombre de Combate</span>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    const newNick = `Explorador_${Math.floor(1000 + Math.random() * 9000)}`
+                    setNickname(newNick)
+                    setTabPlayerName(newNick)
+                  }}
+                  className="text-white/50 hover:text-indigo-300 flex items-center gap-1 text-[11px] font-semibold transition-colors"
+                >
+                  <RefreshCw className="w-3 h-3" /> Aleatorio
+                </button>
+              </div>
+              
+              <div className="relative">
+                <input
+                  type="text"
+                  value={nickname}
+                  onChange={(e) => {
+                    setNickname(e.target.value)
+                    setTabPlayerName(e.target.value)
+                  }}
+                  placeholder="Escribe tu apodo..."
+                  maxLength={20}
+                  className="w-full bg-black/40 border-b border-white/20 focus:border-indigo-500 focus:bg-black/60 rounded-xl px-4 py-3 text-base sm:text-lg font-bold text-center text-white placeholder-white/20 focus:outline-none transition-all shadow-inner"
+                />
+              </div>
+            </div>
+
           </div>
-
-        </div>
+        )}
 
         {/* Global Error Banner */}
         {errorMessage && (
-          <div className="w-full bg-rose-500/15 border border-rose-500/40 p-3.5 rounded-2xl text-rose-300 text-xs flex items-center gap-2.5 mb-4 shadow-lg animate-in fade-in slide-in-from-top-2">
-            <AlertCircle className="w-5 h-5 shrink-0 text-rose-400" />
+          <div className="w-full bg-rose-500/10 border border-rose-500/30 p-3.5 rounded-2xl text-rose-300 text-xs flex items-center gap-2.5 mb-4 shadow-lg animate-in fade-in slide-in-from-top-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
             <span className="font-medium">{errorMessage}</span>
           </div>
         )}
@@ -294,164 +304,249 @@ export default function Home() {
           {mode === 'main' && (
             <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-300">
               
-              {/* Join Game Button */}
+              {/* Primary Button: Create Room */}
+              <button
+                type="button"
+                onClick={() => setMode('create')}
+                className="w-full bg-indigo-600 shadow-[0_0_20px_rgba(79,70,229,0.4)] border border-indigo-400/50 hover:bg-indigo-500 text-white font-black text-base py-4 px-6 rounded-2xl flex items-center justify-between transition-all active:scale-95 cursor-pointer group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-white/10 text-white">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <span className="tracking-wide">Crear Sala</span>
+                </div>
+                <Compass className="w-5 h-5 text-indigo-200 group-hover:rotate-45 transition-transform" />
+              </button>
+
+              {/* Secondary Button: Join Room (Ghost / Glass Style) */}
               <button
                 type="button"
                 onClick={() => setMode('join')}
-                className="w-full group relative overflow-hidden bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 hover:from-emerald-300 hover:to-cyan-300 text-slate-950 font-black text-base py-3.5 px-6 rounded-3xl shadow-xl shadow-emerald-500/20 flex items-center justify-between transition-all active:scale-[0.98]"
+                className="w-full bg-white/5 border border-white/10 hover:bg-white/10 text-white font-bold text-base py-4 px-6 rounded-2xl flex items-center justify-between transition-all active:scale-95 cursor-pointer group"
               >
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-2xl bg-slate-950/20 text-slate-950">
+                  <div className="p-2 rounded-xl bg-white/5 text-white/70 group-hover:text-white">
                     <KeyRound className="w-5 h-5" />
                   </div>
                   <span className="tracking-wide">Unirse a Partida</span>
                 </div>
-                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </button>
-
-              {/* Create Game Button */}
-              <button
-                type="button"
-                onClick={() => setMode('create')}
-                className="w-full group bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-100 font-extrabold text-base py-3.5 px-6 rounded-3xl shadow-lg flex items-center justify-between transition-all active:scale-[0.98]"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-2xl bg-amber-500/10 text-amber-400">
-                    <Users className="w-5 h-5" />
-                  </div>
-                  <span className="tracking-wide">Crear Nueva Sala</span>
-                </div>
-                <Compass className="w-5 h-5 text-amber-400 group-hover:rotate-45 transition-transform" />
+                <ArrowRight className="w-5 h-5 text-white/50 group-hover:text-white group-hover:translate-x-1 transition-all" />
               </button>
 
             </div>
           )}
 
-          {/* CREATE ROOM MODE (WITH CATEGORY AND DIFFICULTY SELECTOR) */}
+          {/* CREATE ROOM MODE (TACTICAL CONFIGURATION MENU) */}
           {mode === 'create' && (
-            <div className={`bg-slate-900/90 backdrop-blur-xl border border-slate-800 p-5 rounded-3xl shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200`}>
+            <div className="bg-white/[0.03] backdrop-blur-md border border-white/[0.08] shadow-2xl rounded-2xl p-5 space-y-5 animate-in fade-in zoom-in-95 duration-200 pb-24 sm:pb-5">
               
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+              {/* Tactical Top Header */}
+              <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
                 <button
                   type="button"
                   onClick={() => setMode('main')}
-                  className="inline-flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-200 transition-colors"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-white/70 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-1.5 rounded-xl transition-all active:scale-95 cursor-pointer"
                 >
                   <ChevronLeft className="w-4 h-4" /> Volver
                 </button>
-                <span className="text-xs font-black uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                <span className="text-xs font-black uppercase tracking-wider text-indigo-400 flex items-center gap-1.5">
                   <Layers className="w-4 h-4" /> Configuración de Sala
                 </span>
               </div>
 
-              <form onSubmit={handleCreateSubmit} className="space-y-4">
-                
-                {/* 2x2 Dynamic Theme Category Cards Grid */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-300 block mb-1">1. Elige el Tema del Mapa</label>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    {(Object.keys(GAME_CATEGORIES) as CategoryKey[]).map((key) => {
-                      const cat = GAME_CATEGORIES[key]
-                      const Icon = categoryIconMap[key] || Globe
-                      const isSelected = selectedCategory === key
+              {/* Locked Player Profile Summary */}
+              <div className="p-3.5 rounded-2xl bg-black/40 border border-white/[0.08] flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-2xl shadow-[0_0_12px_rgba(99,102,241,0.3)]">
+                    {selectedAvatar}
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1">
+                      <Gamepad2 className="w-3 h-3" /> Anfitrión
+                    </div>
+                    <div className="text-sm font-black text-white truncate max-w-[160px] sm:max-w-[200px]">
+                      {nickname || 'Anfitrión'}
+                    </div>
+                  </div>
+                </div>
+                <span className="text-[10px] font-semibold text-white/40 bg-white/5 border border-white/10 px-2 py-1 rounded-lg">
+                  Perfil fijado
+                </span>
+              </div>
 
+              <form onSubmit={handleCreateSubmit} className="space-y-5">
+                
+                {/* Tactical Mission Banner */}
+                <div className="p-3.5 rounded-xl border border-white/[0.08] bg-black/30 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-bold text-white">
+                        {activeCategoryConfig.name}
+                      </h4>
+                      <p className="text-[11px] text-white/50 font-medium">
+                        Pirámide de 5 Niveles • 12 Disciplinas
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold bg-white/5 text-white/70 border border-white/10 px-2 py-0.5 rounded-full">
+                    MVP General
+                  </span>
+                </div>
+
+                {/* Tactical Stepper: Max Players Selector (2 to 12) */}
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between text-xs font-semibold text-white/70">
+                    <span className="flex items-center gap-1.5">
+                      <UserPlus className="w-3.5 h-3.5 text-indigo-400" /> Capacidad de Jugadores
+                    </span>
+                    <span className="text-[10px] font-mono text-white/50 font-bold bg-white/5 px-2 py-0.5 rounded-md border border-white/10">
+                      2 - 12 Jugadores
+                    </span>
+                  </div>
+
+                  {/* Stepper Main Box */}
+                  <div className="p-3 bg-black/40 border border-white/10 rounded-2xl flex items-center justify-between gap-3 shadow-inner">
+                    {/* Minus Button */}
+                    <button
+                      type="button"
+                      disabled={selectedMaxPlayers <= 2}
+                      onClick={() => setSelectedMaxPlayers((prev) => Math.max(2, prev - 1))}
+                      className="w-12 h-12 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-white active:scale-90 transition-all disabled:opacity-20 disabled:pointer-events-none cursor-pointer"
+                      aria-label="Reducir jugadores"
+                    >
+                      <Minus className="w-5 h-5 text-white" />
+                    </button>
+
+                    {/* Center Counter Display */}
+                    <div className="flex-1 text-center space-y-0.5">
+                      <div className="flex items-baseline justify-center gap-1.5">
+                        <span className="text-3xl font-black text-white font-mono tracking-tight">
+                          {selectedMaxPlayers}
+                        </span>
+                        <span className="text-xs font-bold text-indigo-300 uppercase tracking-wider">
+                          Jugadores
+                        </span>
+                      </div>
+                      <p className="text-[10.5px] font-medium text-white/50">
+                        {selectedMaxPlayers === 2
+                          ? 'Duelo 1v1 • Máxima tensión'
+                          : selectedMaxPlayers <= 4
+                          ? 'Escuadrón • Partida recomendada'
+                          : selectedMaxPlayers <= 8
+                          ? 'Grupo • Alta competencia'
+                          : 'Batalla Masiva • Caos total (12 Máx)'}
+                      </p>
+                    </div>
+
+                    {/* Plus Button */}
+                    <button
+                      type="button"
+                      disabled={selectedMaxPlayers >= 12}
+                      onClick={() => setSelectedMaxPlayers((prev) => Math.min(12, prev + 1))}
+                      className="w-12 h-12 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-white active:scale-90 transition-all disabled:opacity-20 disabled:pointer-events-none cursor-pointer"
+                      aria-label="Aumentar jugadores"
+                    >
+                      <Plus className="w-5 h-5 text-white" />
+                    </button>
+                  </div>
+
+                  {/* Quick Presets Chips */}
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {PLAYER_PRESETS.map((preset) => {
+                      const isSelected = selectedMaxPlayers === preset.count
                       return (
-                        <div
-                          key={key}
-                          onClick={() => setSelectedCategory(key)}
-                          className={`p-3 rounded-2xl border transition-all duration-300 cursor-pointer flex flex-col justify-between text-left space-y-2 relative overflow-hidden ${
+                        <button
+                          key={preset.count}
+                          type="button"
+                          onClick={() => setSelectedMaxPlayers(preset.count)}
+                          className={`py-2 px-1 rounded-xl text-center transition-all cursor-pointer border ${
                             isSelected
-                              ? `${cat.theme.cardBg} ${cat.theme.activeBorder} shadow-xl scale-[1.02]`
-                              : 'bg-slate-950/70 border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/70'
+                              ? 'bg-indigo-600/30 border-indigo-500/60 text-white shadow-[0_0_12px_rgba(99,102,241,0.3)] scale-[1.02]'
+                              : 'bg-black/30 border-white/5 text-white/50 hover:bg-white/5 hover:text-white'
                           }`}
                         >
-                          <div className="flex items-center justify-between w-full">
-                            <div className={`p-2 rounded-xl border ${cat.badgeColor}`}>
-                              <Icon className="w-4 h-4" />
-                            </div>
-
-                            {isSelected && (
-                              <CheckCircle2 className="w-4 h-4 text-emerald-400 animate-in zoom-in" />
-                            )}
-                          </div>
-
-                          <div>
-                            <h4 className={`text-xs sm:text-sm font-black ${isSelected ? 'text-white' : 'text-slate-200'}`}>
-                              {cat.name}
-                            </h4>
-                            <p className="text-[10px] text-slate-300 leading-tight mt-1 line-clamp-2 font-medium">
-                              {cat.description}
-                            </p>
-                          </div>
-                        </div>
+                          <div className="text-xs font-black leading-tight">{preset.count}</div>
+                          <div className="text-[9px] font-semibold opacity-70 leading-tight">{preset.label}</div>
+                        </button>
                       )
                     })}
                   </div>
-                </div>
 
-                {/* Difficulty Mode Selector Toggle */}
-                <div className="space-y-1.5 pt-1">
-                  <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5">
-                      <Zap className="w-3.5 h-3.5 text-amber-400" /> 2. Modo de Dificultad
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-mono font-bold">
-                      {DIFFICULTY_SETTINGS[selectedDifficulty].badgeText}
-                    </span>
-                  </label>
-
-                  <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950 border border-slate-800 rounded-2xl">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedDifficulty('normal')}
-                      className={`py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
-                        selectedDifficulty === 'normal'
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 shadow-md'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      <span>Modo Normal</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setSelectedDifficulty('hard')}
-                      className={`py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
-                        selectedDifficulty === 'hard'
-                          ? 'bg-rose-500/20 text-rose-300 border border-rose-400/40 shadow-md ring-1 ring-rose-400/30'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      <Flame className="w-3.5 h-3.5 text-rose-400" />
-                      <span>Modo Hardcore</span>
-                    </button>
-                  </div>
-
-                  <p className="text-[10px] text-slate-400 font-medium px-1">
-                    {DIFFICULTY_SETTINGS[selectedDifficulty].description}
+                  <p className="text-[10.5px] text-white/40 font-medium px-1 text-center sm:text-left">
+                    La partida se iniciará automáticamente en cuanto entren los {selectedMaxPlayers} jugadores y marquen Listo.
                   </p>
                 </div>
 
-                {/* Selected Category & Difficulty Summary Banner */}
-                <div className="bg-slate-950/90 border border-slate-800/80 p-2.5 rounded-2xl text-center text-xs text-slate-200 font-bold">
-                  Estilo: <span className="text-amber-400">{activeCategoryConfig.name}</span> • <span className="text-emerald-400">{DIFFICULTY_SETTINGS[selectedDifficulty].name}</span>
+                {/* Visual Cards: Difficulty Selector (Clean, without subtext) */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs font-semibold text-white/70">
+                    <span className="flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5 text-indigo-400" /> Modo de Dificultad
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowDifficultyInfo(true)}
+                      className="flex items-center gap-1.5 text-[11px] font-semibold text-indigo-300 hover:text-white bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 px-2.5 py-0.5 rounded-lg transition-all active:scale-95 cursor-pointer"
+                    >
+                      <Info className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>Ver diferencias</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    
+                    {/* Normal Mode Card */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDifficulty('normal')}
+                      className={`py-3.5 px-4 rounded-xl border text-center transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2 ${
+                        selectedDifficulty === 'normal'
+                          ? 'border-blue-500/50 bg-blue-500/15 ring-2 ring-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.3)]'
+                          : 'border-white/10 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/20'
+                      }`}
+                    >
+                      <span className="text-base">🛡️</span>
+                      <span className="text-xs font-black text-white">Modo Normal</span>
+                    </button>
+
+                    {/* Hardcore Mode Card */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDifficulty('hard')}
+                      className={`py-3.5 px-4 rounded-xl border text-center transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2 ${
+                        selectedDifficulty === 'hard'
+                          ? 'border-rose-500/50 bg-rose-500/15 ring-2 ring-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.3)]'
+                          : 'border-white/10 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/20'
+                      }`}
+                    >
+                      <span className="text-base">🔥</span>
+                      <span className="text-xs font-black text-rose-300">Modo Hardcore</span>
+                    </button>
+
+                  </div>
                 </div>
 
-                {/* Submit Create Button */}
-                <button
-                  type="submit"
-                  disabled={isCreating}
-                  className={`w-full py-3.5 px-6 bg-gradient-to-r ${currentTheme.buttonClass} font-black text-base rounded-3xl shadow-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98]`}
-                >
-                  {isCreating ? (
-                    <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      <span>Crear Sala de Juego</span>
-                      <ArrowRight className="w-5 h-5" />
-                    </>
-                  )}
-                </button>
+                {/* Sticky Bottom CTA (Mobile First & Desktop) */}
+                <div className="fixed sm:static bottom-0 left-0 w-full p-4 sm:p-0 bg-gradient-to-t from-[#0B0F19] via-[#0B0F19]/95 to-transparent sm:bg-none z-20">
+                  <button
+                    type="submit"
+                    disabled={isCreating}
+                    className="w-full py-4 px-6 bg-indigo-600 hover:bg-indigo-500 border border-indigo-400/50 shadow-[0_0_20px_rgba(79,70,229,0.4)] text-white font-black text-base rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                  >
+                    {isCreating ? (
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <span>Crear Sala ({selectedMaxPlayers} Jugadores)</span>
+                        <ArrowRight className="w-5 h-5" />
+                      </>
+                    )}
+                  </button>
+                </div>
 
               </form>
             </div>
@@ -459,27 +554,47 @@ export default function Home() {
 
           {/* JOIN ROOM MODE (PIN ENTRY) */}
           {mode === 'join' && (
-            <div className="bg-slate-900/90 backdrop-blur-xl border border-slate-800 p-5 rounded-3xl shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-white/[0.03] backdrop-blur-md border border-white/[0.08] shadow-2xl rounded-2xl p-5 space-y-5 animate-in fade-in zoom-in-95 duration-200">
               
-              {/* Top Header inside card */}
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
                 <button
                   type="button"
                   onClick={() => {
                     setMode('main')
                     setErrorMessage(null)
                   }}
-                  className="inline-flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-200 transition-colors"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-white/70 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-1.5 rounded-xl transition-all active:scale-95 cursor-pointer"
                 >
                   <ChevronLeft className="w-4 h-4" /> Volver
                 </button>
-                <span className="text-xs font-black uppercase tracking-wider text-emerald-400">Unirse con PIN</span>
+                <span className="text-xs font-black uppercase tracking-wider text-indigo-400">Unirse con PIN</span>
+              </div>
+
+              {/* Locked Player Profile Summary */}
+              <div className="p-3.5 rounded-2xl bg-black/40 border border-white/[0.08] flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-2xl shadow-[0_0_12px_rgba(99,102,241,0.3)]">
+                    {selectedAvatar}
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1">
+                      <Gamepad2 className="w-3 h-3" /> Jugador Invitado
+                    </div>
+                    <div className="text-sm font-black text-white truncate max-w-[160px] sm:max-w-[200px]">
+                      {nickname || 'Explorador'}
+                    </div>
+                  </div>
+                </div>
+                <span className="text-[10px] font-semibold text-white/40 bg-white/5 border border-white/10 px-2 py-1 rounded-lg">
+                  Perfil fijado
+                </span>
               </div>
 
               {/* PIN Code Fields */}
               <form onSubmit={handleJoinSubmit} className="space-y-5">
-                <div className="space-y-2 text-center">
-                  <p className="text-sm text-slate-200 font-bold">Introduce el PIN de 4 dígitos</p>
+                <div className="space-y-3 text-center">
+                  <p className="text-xs text-white/70 font-semibold">Introduce el código PIN de 4 dígitos</p>
                   
                   {/* 4 Digit Slots */}
                   <div className="flex justify-center gap-2.5 pt-1">
@@ -494,24 +609,24 @@ export default function Home() {
                         value={digit}
                         onChange={(e) => handlePinChange(idx, e.target.value)}
                         onKeyDown={(e) => handleKeyDown(idx, e)}
-                        className="w-13 h-16 sm:w-16 sm:h-20 bg-slate-950 border-2 border-slate-700/80 rounded-2xl text-center text-2xl sm:text-3xl font-mono font-black text-emerald-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 focus:outline-none transition-all shadow-inner"
+                        className="w-14 h-16 sm:w-16 sm:h-20 bg-black/40 border-2 border-white/15 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 rounded-2xl text-center text-2xl sm:text-3xl font-mono font-black text-indigo-300 focus:outline-none transition-all shadow-inner"
                       />
                     ))}
                   </div>
                 </div>
 
-                {/* Enter Button */}
+                {/* Enter CTA */}
                 <button
                   type="submit"
                   disabled={!isPinComplete || isJoining}
-                  className={`w-full py-3.5 px-6 rounded-3xl font-black text-base flex items-center justify-center gap-2 transition-all shadow-xl ${
+                  className={`w-full py-4 px-6 rounded-2xl font-black text-base flex items-center justify-center gap-2 transition-all shadow-xl active:scale-95 cursor-pointer ${
                     isPinComplete && !isJoining
-                      ? 'bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 text-slate-950 hover:from-emerald-300 hover:to-cyan-300 active:scale-[0.98]'
-                      : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/50'
+                      ? 'bg-indigo-600 hover:bg-indigo-500 border border-indigo-400/50 shadow-[0_0_20px_rgba(79,70,229,0.4)] text-white'
+                      : 'bg-white/5 border border-white/10 text-white/30 cursor-not-allowed'
                   }`}
                 >
                   {isJoining ? (
-                    <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   ) : (
                     <>
                       <span>Entrar a la Sala</span>
@@ -529,10 +644,123 @@ export default function Home() {
 
       {/* Footer Info */}
       <footer className="w-full max-w-md text-center py-2 z-10">
-        <p className="text-[11px] text-slate-400 font-medium">
-          Geo-Royale • Juego de preguntas y mapas multijugador en tiempo real
+        <p className="text-[11px] text-white/40 font-medium">
+          Geo-Royale • Batalla de conocimiento en tiempo real
         </p>
       </footer>
+
+      {/* Difficulty Comparison Info Modal */}
+      {showDifficultyInfo && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setShowDifficultyInfo(false)}
+        >
+          <div 
+            className="bg-[#0e1424] border border-white/10 p-5 sm:p-6 rounded-3xl shadow-2xl max-w-md w-full relative space-y-4 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-400">
+                  <Zap className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white">Comparativa de Modos</h3>
+                  <p className="text-[11px] text-white/50">Métricas y balance de combate</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDifficultyInfo(false)}
+                className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Mode Comparison Cards */}
+            <div className="space-y-3">
+              {/* Normal Mode */}
+              <div className="p-4 rounded-2xl bg-blue-500/5 border border-blue-500/20 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-blue-300 flex items-center gap-1.5">
+                    🛡️ Modo Normal
+                  </span>
+                  <span className="text-[10px] font-bold bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full border border-blue-500/30">
+                    Equilibrado
+                  </span>
+                </div>
+                
+                <div className="grid grid-cols-3 gap-2 pt-1 text-center">
+                  <div className="bg-black/40 p-2 rounded-xl border border-white/5">
+                    <Clock className="w-3.5 h-3.5 text-blue-400 mx-auto mb-1" />
+                    <div className="text-[9.5px] text-white/50">Tiempo</div>
+                    <div className="text-xs font-black text-white">8s</div>
+                  </div>
+                  <div className="bg-black/40 p-2 rounded-xl border border-white/5">
+                    <Heart className="w-3.5 h-3.5 text-emerald-400 mx-auto mb-1" />
+                    <div className="text-[9.5px] text-white/50">Curación</div>
+                    <div className="text-xs font-black text-emerald-400">+10 a +20 HP</div>
+                  </div>
+                  <div className="bg-black/40 p-2 rounded-xl border border-white/5">
+                    <Skull className="w-3.5 h-3.5 text-rose-400 mx-auto mb-1" />
+                    <div className="text-[9.5px] text-white/50">Daño / Fallo</div>
+                    <div className="text-xs font-black text-rose-300">15 - 75 HP</div>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-white/60 leading-relaxed pt-1">
+                  8 segundos por pregunta (5s en Nivel 5). Permite recuperarse mediante curaciones por acierto consecutivo en Niveles 3, 4 y 5.
+                </p>
+              </div>
+
+              {/* Hardcore Mode */}
+              <div className="p-4 rounded-2xl bg-rose-500/5 border border-rose-500/20 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-rose-300 flex items-center gap-1.5">
+                    🔥 Modo Hardcore
+                  </span>
+                  <span className="text-[10px] font-bold bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded-full border border-rose-500/30">
+                    Extremo &bull; Daño Letal
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 pt-1 text-center">
+                  <div className="bg-black/40 p-2 rounded-xl border border-white/5">
+                    <Clock className="w-3.5 h-3.5 text-rose-400 mx-auto mb-1" />
+                    <div className="text-[9.5px] text-white/50">Tiempo</div>
+                    <div className="text-xs font-black text-white">5s</div>
+                  </div>
+                  <div className="bg-black/40 p-2 rounded-xl border border-white/5">
+                    <Heart className="w-3.5 h-3.5 text-zinc-400 mx-auto mb-1" />
+                    <div className="text-[9.5px] text-white/50">Curación</div>
+                    <div className="text-xs font-black text-zinc-300">0 a +10 HP</div>
+                  </div>
+                  <div className="bg-black/40 p-2 rounded-xl border border-white/5">
+                    <Skull className="w-3.5 h-3.5 text-rose-500 mx-auto mb-1" />
+                    <div className="text-[9.5px] text-white/50">Daño / Fallo</div>
+                    <div className="text-xs font-black text-rose-400">25 - 100 HP</div>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-white/60 leading-relaxed pt-1">
+                  Ráfaga frenética de 5 segundos. Daño masivo de 25 a 100 HP (un fallo en Nivel 5 es eliminación instantánea). Curaciones mínimas.
+                </p>
+              </div>
+            </div>
+
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setShowDifficultyInfo(false)}
+              className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition-all active:scale-95 shadow-lg shadow-indigo-600/30 cursor-pointer"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   )

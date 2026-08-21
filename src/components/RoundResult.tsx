@@ -1,14 +1,43 @@
 'use client'
 
-import { Crown, Heart, Play, ShieldCheck, Trophy, Users, ArrowRight, Sparkles, Navigation } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Crown, Heart, Trophy, Clock, Check, X, ShieldAlert, Sparkles } from 'lucide-react'
 import { ActivePlayer, broadcastGameState } from '@/lib/supabase/playersService'
+import { GAME_CATEGORIES, CategoryKey } from '@/config/mapConfig'
+
+export interface LastBurstOutcome {
+  damageDealt?: number
+  healingDealt?: number
+  isCorrect?: boolean
+  correctCount?: number
+}
 
 interface RoundResultProps {
   roomPin: string
   players: ActivePlayer[]
   currentPlayerName: string
   isHost?: boolean
+  roundNumber?: number
+  lastBurstOutcome?: LastBurstOutcome | null
   onNextRound?: () => void
+  onVictory?: (winner?: ActivePlayer, isDraw?: boolean) => void
+}
+
+const RESULT_DURATION_SECONDS = 5.0
+
+// Helper para obtener nombre e icono de la subzona a partir de su ID
+function getSubZoneDetails(zoneId?: string | null) {
+  if (!zoneId) return { name: 'Sin zona', icon: '📍' }
+  for (const catKey of Object.keys(GAME_CATEGORIES)) {
+    const cat = GAME_CATEGORIES[catKey as CategoryKey]
+    if (cat) {
+      for (const lvl of cat.levels) {
+        const found = lvl.subzones.find((sz) => sz.id === zoneId)
+        if (found) return { name: found.name, icon: found.icon || '📍' }
+      }
+    }
+  }
+  return { name: zoneId, icon: '📍' }
 }
 
 export default function RoundResult({
@@ -16,122 +45,266 @@ export default function RoundResult({
   players = [],
   currentPlayerName,
   isHost = false,
-  onNextRound
+  roundNumber = 1,
+  lastBurstOutcome,
+  onNextRound,
+  onVictory
 }: RoundResultProps) {
-  // Sort leaderboard by HP descending (highest HP first)
-  const sortedPlayers = [...players].sort((a, b) => b.hp - a.hp)
+  const [timeLeft, setTimeLeft] = useState<number>(RESULT_DURATION_SECONDS)
+  const hasTriggeredNextRound = useRef<boolean>(false)
 
-  const handleNextAssaultClick = () => {
-    if (onNextRound) {
-      onNextRound()
+  // Fase 1: Evaluar supervivientes con hp > 0
+  const survivors = players.filter((p) => (p.hp ?? 100) > 0)
+  const isGameOver = players.length >= 2 && survivors.length <= 1
+  const isDraw = isGameOver && survivors.length === 0
+  const winner = isGameOver && survivors.length === 1 ? survivors[0] : undefined
+
+  // Sort leaderboard: Supervivientes arriba por HP descendente, eliminados al fondo
+  const alivePlayers = [...survivors].sort((a, b) => (b.hp ?? 100) - (a.hp ?? 100))
+  const deadPlayers = [...players].filter((p) => (p.hp ?? 100) <= 0)
+  const sortedPlayers = [...alivePlayers, ...deadPlayers]
+
+  // 1. Temporizador de 5 segundos
+  useEffect(() => {
+    setTimeLeft(RESULT_DURATION_SECONDS)
+    hasTriggeredNextRound.current = false
+
+    const interval = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 0.1) {
+          clearInterval(interval)
+          return 0
+        }
+        return prev - 0.1
+      })
+    }, 100)
+
+    return () => clearInterval(interval)
+  }, [])
+
+  // 2. Transición automatizada
+  useEffect(() => {
+    if (timeLeft === 0 && !hasTriggeredNextRound.current) {
+      hasTriggeredNextRound.current = true
+
+      if (isGameOver) {
+        if (onVictory) {
+          onVictory(winner, isDraw)
+        }
+        if (isHost && roomPin) {
+          broadcastGameState(roomPin, 'VICTORY', { winnerPlayer: winner, isDraw })
+        }
+        return
+      }
+
+      if (onNextRound) {
+        onNextRound()
+      }
+
+      if (isHost && roomPin) {
+        broadcastGameState(roomPin, 'ZONE_SELECTION', { round_number: roundNumber + 1 })
+      }
     }
-    broadcastGameState(roomPin, 'ZONE_SELECTION')
-  }
+  }, [timeLeft, isGameOver, winner, isDraw, onVictory, onNextRound, isHost, roomPin, roundNumber])
+
+  const progressPercent = Math.max(0, Math.min(100, (timeLeft / RESULT_DURATION_SECONDS) * 100))
 
   return (
-    <div className="w-full max-w-md bg-slate-900/95 backdrop-blur-xl border border-slate-800 p-5 sm:p-6 rounded-3xl shadow-2xl space-y-5 text-center font-sans animate-in fade-in zoom-in-95 duration-300 relative overflow-hidden">
+    <div className="w-full max-w-md mx-auto bg-[#0B0F19] border border-white/10 p-4 sm:p-5 rounded-3xl shadow-2xl space-y-3.5 text-center font-sans animate-in fade-in zoom-in-95 duration-300 relative overflow-hidden">
       
-      {/* Background Accent Glow */}
-      <div className="absolute -top-24 -left-24 w-48 h-48 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
-      <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+      {/* Halo de luz superior de acento */}
+      <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-80 h-80 bg-blue-600/20 blur-[120px] pointer-events-none rounded-full" />
+      <div className="absolute -bottom-24 right-0 w-64 h-64 bg-emerald-600/10 blur-[100px] pointer-events-none rounded-full" />
 
-      {/* Header Banner */}
-      <div className="space-y-1.5 z-10">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-400/30 text-xs font-black text-amber-400 uppercase tracking-wider">
-          <Trophy className="w-4 h-4 text-amber-400" />
-          <span>Clasificación de Ronda</span>
+      {/* Cabecera Principal */}
+      <div className="space-y-1 z-10 relative">
+        <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-white/[0.05] border border-white/10 text-[11px] font-black text-amber-400 uppercase tracking-wider backdrop-blur-sm">
+          <Trophy className="w-3 h-3 text-amber-400" />
+          <span>Ronda {roundNumber} &bull; Clasificación</span>
         </div>
-        <h2 className="text-2xl sm:text-3xl font-black text-slate-100 tracking-tight">
-          ¡Ronda Finalizada!
+        <h2 className="text-xl sm:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-white to-amber-400 tracking-tight">
+          📊 RESULTADOS DE LA RONDA
         </h2>
-        <p className="text-xs text-slate-400 font-medium">
-          Estado actual de la sala y puntos de vida (HP) de los competidores
+        <p className="text-[11px] text-white/50 font-medium">
+          Duelo táctico y estado de salud de los exploradores
         </p>
       </div>
 
-      {/* Leaderboard Grid */}
-      <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1 z-10">
+      {/* Lista de Jugadores (Mini-Dashboards Glassmorphism) */}
+      <div className="space-y-2 max-h-[330px] overflow-y-auto pr-0.5 z-10 relative text-left">
         {sortedPlayers.map((player, index) => {
           const isMe = player.player_name === currentPlayerName
+          const isDead = (player.hp ?? 100) <= 0
           const rank = index + 1
+
+          // Deducción de Estado Táctico
+          const currentZoneId = player.current_zone
+          const isConquered = Boolean(currentZoneId && player.completed_zones?.includes(currentZoneId))
+          const isTrapped = Boolean(player.mandatory_zone && player.mandatory_zone === currentZoneId)
+          const zoneDetails = getSubZoneDetails(currentZoneId)
+
+          // Deducción de ráfaga y cambio de HP
+          let correctCount = isConquered ? 2 : isTrapped ? 1 : 0
+          let hpDiffBadge: string | null = null
+
+          if (isMe && lastBurstOutcome) {
+            if (lastBurstOutcome.correctCount !== undefined) {
+              correctCount = lastBurstOutcome.correctCount
+            } else if (lastBurstOutcome.isCorrect) {
+              correctCount = 2
+            }
+            if ((lastBurstOutcome.damageDealt ?? 0) > 0) {
+              hpDiffBadge = `-${lastBurstOutcome.damageDealt} HP`
+            } else if ((lastBurstOutcome.healingDealt ?? 0) > 0) {
+              hpDiffBadge = `+${lastBurstOutcome.healingDealt} HP`
+            }
+          }
 
           return (
             <div
               key={player.id || index}
-              className={`p-3 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
-                isMe
-                  ? 'bg-emerald-500/15 border-emerald-500/50 shadow-lg ring-1 ring-emerald-400/40'
-                  : 'bg-slate-950/80 border-slate-800'
+              className={`rounded-xl p-3 flex flex-col gap-2 shadow-lg backdrop-blur-md transition-all border ${
+                isDead
+                  ? 'bg-black/40 border-white/5 grayscale opacity-50 shadow-inner'
+                  : isMe
+                  ? 'bg-white/[0.06] border-indigo-500/40 ring-1 ring-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.2)]'
+                  : 'bg-white/[0.03] border-white/[0.08]'
               }`}
             >
-              {/* Rank & Avatar */}
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-7 h-7 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono font-black flex items-center justify-center shrink-0">
-                  {rank === 1 ? (
-                    <Crown className="w-4 h-4 text-amber-400 fill-current" />
-                  ) : (
-                    <span className="text-slate-400">#{rank}</span>
-                  )}
-                </div>
+              {/* FILA SUPERIOR: IDENTIDAD Y SALUD */}
+              <div className="flex items-center justify-between gap-2">
+                {/* Izquierda: Avatar y Nombre */}
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-lg bg-black/40 border border-white/10 flex items-center justify-center text-base shrink-0 shadow-inner">
+                    {isDead ? '💀' : player.avatar_icon || '🦊'}
+                  </div>
 
-                <div className="w-9 h-9 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-xl shrink-0">
-                  {player.avatar_icon || '🦊'}
-                </div>
-
-                <div className="text-left truncate min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <h4 className="text-xs font-black text-slate-100 truncate">
+                  <div className="min-w-0 flex items-center gap-1.5">
+                    <span className={`text-xs sm:text-sm font-black truncate ${isDead ? 'line-through text-white/40' : 'text-white'}`}>
                       {player.player_name}
-                    </h4>
+                    </span>
                     {isMe && (
-                      <span className="bg-emerald-500/20 text-emerald-400 text-[9px] px-1.5 py-0.2 rounded-full font-extrabold">
+                      <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 shrink-0">
                         Tú
                       </span>
                     )}
+                    {rank === 1 && !isDead && (
+                      <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />
+                    )}
                   </div>
-                  <span className="text-[10px] text-slate-400 font-medium">
-                    {player.current_zone ? `Zona: ${player.current_zone}` : 'Sin zona'}
-                  </span>
+                </div>
+
+                {/* Derecha: HP Actual y Diferencia */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {hpDiffBadge && (
+                    <span className={`text-[10.5px] font-mono font-bold px-1.5 py-0.5 rounded shadow-sm animate-pulse ${
+                      hpDiffBadge.startsWith('+')
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
+                        : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                    }`}>
+                      {hpDiffBadge}
+                    </span>
+                  )}
+
+                  <div className="flex items-center gap-1">
+                    <Heart className={`w-3.5 h-3.5 ${isDead ? 'text-gray-500 fill-gray-500' : 'text-rose-500 fill-rose-500'}`} />
+                    <span className={`font-mono text-xs sm:text-sm font-black ${isDead ? 'text-white/40' : 'text-emerald-400'}`}>
+                      {player.hp ?? 0} HP
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* HP Bar */}
-              <div className="flex items-center gap-2 shrink-0">
-                <div className="w-20 h-2 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
-                  <div
-                    className="h-full bg-gradient-to-r from-rose-500 to-emerald-400 rounded-full"
-                    style={{ width: `${player.hp}%` }}
-                  />
-                </div>
-                <div className="flex items-center gap-1 font-mono text-xs font-black text-slate-200 w-12 text-right">
-                  <Heart className="w-3 h-3 text-rose-500 fill-rose-500 shrink-0" />
-                  <span>{player.hp}</span>
-                </div>
+              {/* FILA INFERIOR: ANALÍTICA Y CONSECUENCIA TÁCTICA */}
+              <div className="flex items-center justify-between w-full pt-1.5 border-t border-white/5 text-xs">
+                {isDead ? (
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-[10.5px] text-white/40 italic">
+                      Vagando como espectador...
+                    </span>
+                    <span className="bg-gray-800 text-gray-400 border border-gray-700 px-2 py-0.5 rounded-full text-[9.5px] font-black">
+                      💀 ELIMINADO
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    {/* Rendimiento en Ráfaga: Zona + Aciertos */}
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-[11px] text-white/70 truncate flex items-center gap-1 font-bold">
+                        <span>{zoneDetails.icon}</span>
+                        <span className="truncate max-w-[90px] sm:max-w-[120px]">{zoneDetails.name}</span>
+                      </span>
+
+                      {/* Aciertos [✅][✅] */}
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <span className="text-[10px]">
+                          {correctCount >= 1 ? '✅' : '❌'}
+                        </span>
+                        <span className="text-[10px]">
+                          {correctCount === 2 ? '✅' : '❌'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Estado Táctico Destino */}
+                    <div className="shrink-0">
+                      {isConquered ? (
+                        <span className="bg-emerald-500/15 text-emerald-300 border border-emerald-400/40 px-2 py-0.5 rounded-full text-[9.5px] font-black tracking-wider shadow-sm flex items-center gap-1">
+                          🚀 AVANZA
+                        </span>
+                      ) : (
+                        <span className="bg-rose-500/15 text-rose-300 border border-rose-500/40 px-2 py-0.5 rounded-full text-[9.5px] font-black tracking-wider shadow-sm flex items-center gap-1">
+                          ⚠️ ATRAPADO
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
+
             </div>
           )
         })}
       </div>
 
-      {/* Action Footer Button / Host Action */}
-      <div className="pt-2 z-10">
-        {isHost ? (
-          <button
-            onClick={handleNextAssaultClick}
-            className="w-full py-3.5 px-6 bg-gradient-to-r from-amber-400 via-emerald-400 to-cyan-400 text-slate-950 font-black text-sm rounded-3xl shadow-xl hover:shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-          >
-            <Play className="w-4.5 h-4.5 fill-current" />
-            <span>Siguiente Asalto (Volver al Mapa)</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        ) : (
-          <div className="w-full py-3 px-4 rounded-2xl bg-slate-950 border border-slate-800 text-xs font-bold text-slate-300 flex items-center justify-center gap-2">
-            <Sparkles className="w-4 h-4 text-amber-400 animate-spin-slow" />
-            <span>Esperando a que el Anfitrión inicie el Siguiente Asalto...</span>
-          </div>
-        )}
+      {/* Temporizador y Barra de Progreso Automatizada */}
+      <div className="w-full space-y-1.5 pt-1.5 z-10 border-t border-white/10 relative">
+        <div className="flex items-center justify-between text-xs font-bold px-1 text-white/70">
+          <span className="flex items-center gap-1.5 text-amber-300 text-[11px]">
+            <Clock className="w-3.5 h-3.5 animate-spin text-amber-400" />
+            {isDraw
+              ? 'Muerte Súbita Inminente'
+              : isGameOver
+              ? 'Proclamando Ganador...'
+              : 'Volviendo al Mapa'}
+          </span>
+          <span className="font-mono text-xs font-black text-emerald-400">
+            {timeLeft.toFixed(1)}s
+          </span>
+        </div>
+
+        {/* Barra ultra-fina */}
+        <div className="w-full h-1.5 bg-black/50 border border-white/10 rounded-full overflow-hidden shadow-inner">
+          <div
+            className={`h-full rounded-full transition-all duration-100 ease-linear shadow-[0_0_8px_rgba(99,102,241,0.8)] ${
+              isDraw
+                ? 'bg-gradient-to-r from-rose-500 to-amber-500'
+                : isGameOver
+                ? 'bg-gradient-to-r from-amber-400 to-yellow-300'
+                : 'bg-gradient-to-r from-indigo-500 via-emerald-400 to-amber-400'
+            }`}
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+
+        <p className="text-[10px] text-white/40 font-medium">
+          {isGameOver
+            ? `Transicionando a la Pantalla de Victoria en ${Math.ceil(timeLeft)}s...`
+            : `Siguiente asalto en ${Math.ceil(timeLeft)}s. No se requiere pulsar nada.`}
+        </p>
       </div>
 
     </div>
   )
 }
+

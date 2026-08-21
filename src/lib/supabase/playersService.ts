@@ -9,6 +9,9 @@ export interface ActivePlayer {
   avatar_icon?: string
   current_zone?: string | null
   difficulty_mode?: string
+  max_players?: number
+  completed_zones?: string[]
+  mandatory_zone?: string | null
   created_at?: string
 }
 
@@ -29,6 +32,7 @@ export interface StateBroadcastPayload {
 interface RoomCallbacks {
   playersUpdate: Set<(players: ActivePlayer[]) => void>
   readyChange: Set<(playerName: string, isReady: boolean) => void>
+  answeredChange: Set<(playerName: string) => void>
   stateChange: Set<(newState: string, extraPayload?: any) => void>
   emoteReceived: Set<(emoteData: EmoteEvent) => void>
 }
@@ -45,6 +49,7 @@ function getOrCreateRoomCallbacks(cleanPin: string): RoomCallbacks {
     roomCallbacksMap.set(cleanPin, {
       playersUpdate: new Set(),
       readyChange: new Set(),
+      answeredChange: new Set(),
       stateChange: new Set(),
       emoteReceived: new Set()
     })
@@ -67,41 +72,48 @@ function getOrCreateRoomChannel(room_pin: string) {
         }
       })
 
-      // Register ALL event handlers BEFORE calling subscribe()
-      channel
-        .on('broadcast', { event: 'player_ready' }, (payload) => {
-          if (payload.payload && payload.payload.playerName !== undefined) {
-            callbacks.readyChange.forEach((cb) => cb(payload.payload.playerName, Boolean(payload.payload.isReady)))
-          }
-        })
-        .on('broadcast', { event: 'state_change' }, (payload) => {
-          if (payload.payload && payload.payload.newState) {
-            callbacks.stateChange.forEach((cb) => cb(payload.payload.newState, payload.payload.payload))
-          }
-        })
-        .on('broadcast', { event: 'emote' }, (payload) => {
-          if (payload.payload) {
-            callbacks.emoteReceived.forEach((cb) => cb(payload.payload as EmoteEvent))
-          }
-        })
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'active_players',
-            filter: `room_pin=eq.${cleanPin}`
-          },
-          async () => {
-            if (callbacks.playersUpdate.size > 0) {
-              const players = await getPlayersInRoom(cleanPin)
-              callbacks.playersUpdate.forEach((cb) => cb(players))
+      // Guard: Only attach .on() listeners if the channel is not already joined/subscribing in Supabase SDK's internal registry
+      if (channel.state !== 'joined' && channel.state !== 'joining') {
+        channel
+          .on('broadcast', { event: 'player_ready' }, (payload) => {
+            if (payload.payload && payload.payload.playerName !== undefined) {
+              callbacks.readyChange.forEach((cb) => cb(payload.payload.playerName, Boolean(payload.payload.isReady)))
             }
-          }
-        )
+          })
+          .on('broadcast', { event: 'player_answered' }, (payload) => {
+            if (payload.payload && payload.payload.playerName !== undefined) {
+              callbacks.answeredChange.forEach((cb) => cb(payload.payload.playerName))
+            }
+          })
+          .on('broadcast', { event: 'state_change' }, (payload) => {
+            if (payload.payload && payload.payload.newState) {
+              callbacks.stateChange.forEach((cb) => cb(payload.payload.newState, payload.payload.payload))
+            }
+          })
+          .on('broadcast', { event: 'emote' }, (payload) => {
+            if (payload.payload) {
+              callbacks.emoteReceived.forEach((cb) => cb(payload.payload as EmoteEvent))
+            }
+          })
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'active_players',
+              filter: `room_pin=eq.${cleanPin}`
+            },
+            async () => {
+              if (callbacks.playersUpdate.size > 0) {
+                const players = await getPlayersInRoom(cleanPin)
+                callbacks.playersUpdate.forEach((cb) => cb(players))
+              }
+            }
+          )
 
-      // Call subscribe() strictly AFTER all handlers are attached
-      channel.subscribe()
+        channel.subscribe()
+      }
+
       activeRoomChannels.set(cleanPin, channel)
     } catch (err) {
       console.error('Error creating realtime channel:', err)
@@ -269,6 +281,40 @@ export async function getRoomDifficultyMode(room_pin: string): Promise<string> {
 }
 
 /**
+ * Obtiene la capacidad máxima de jugadores (`max_players`) de una sala existente en Supabase
+ */
+export async function getRoomMaxPlayers(room_pin: string): Promise<number> {
+  const cleanPin = String(room_pin).trim()
+  if (!cleanPin) return 4
+
+  const cached = getCachedRoomPlayers(cleanPin)
+  if (cached.length > 0 && cached[0].max_players) {
+    return Number(cached[0].max_players)
+  }
+
+  try {
+    const supabaseQuery = (async () => {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('active_players')
+        .select('max_players')
+        .eq('room_pin', cleanPin)
+        .limit(1)
+
+      if (!error && data && data.length > 0 && data[0].max_players) {
+        return Number(data[0].max_players)
+      }
+      return 4
+    })()
+
+    return await withTimeout(supabaseQuery, 1500, 4)
+  } catch (err) {
+    console.error('Error al obtener capacidad máxima de jugadores:', err)
+  }
+  return 4
+}
+
+/**
  * Obtiene la lista completa de jugadores de la sala ordenados por fecha de creación (con timeout fail-safe)
  */
 export async function getPlayersInRoom(room_pin: string): Promise<ActivePlayer[]> {
@@ -317,16 +363,25 @@ export async function joinOrCreateRoom(
   player_name: string,
   category_key: string = 'geografia',
   avatar_icon: string = '🦊',
-  difficulty_mode: string = 'normal'
+  difficulty_mode: string = 'normal',
+  max_players: number = 4
 ): Promise<ActivePlayer> {
   const cleanPin = String(room_pin).trim()
   const cleanName = String(player_name).trim()
 
   let finalDifficulty = difficulty_mode
-  if (!difficulty_mode || difficulty_mode === 'normal') {
-    const hostDifficulty = await getRoomDifficultyMode(cleanPin)
-    if (hostDifficulty) {
-      finalDifficulty = hostDifficulty
+  let finalMaxPlayers = Number(max_players) || 4
+
+  // Only query host settings if joining an existing room!
+  const isExistingRoom = await checkRoomExists(cleanPin)
+  if (isExistingRoom) {
+    const hostMax = await getRoomMaxPlayers(cleanPin)
+    if (hostMax) {
+      finalMaxPlayers = Number(hostMax)
+    }
+    const hostDiff = await getRoomDifficultyMode(cleanPin)
+    if (hostDiff) {
+      finalDifficulty = hostDiff
     }
   }
 
@@ -339,6 +394,7 @@ export async function joinOrCreateRoom(
     avatar_icon,
     current_zone: null,
     difficulty_mode: finalDifficulty,
+    max_players: finalMaxPlayers,
     created_at: new Date().toISOString()
   }
 
@@ -347,7 +403,7 @@ export async function joinOrCreateRoom(
   try {
     const insertQuery = (async () => {
       const supabase = createClient()
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('active_players')
         .insert([
           {
@@ -358,10 +414,33 @@ export async function joinOrCreateRoom(
             category_key: newPlayer.category_key,
             avatar_icon: newPlayer.avatar_icon,
             current_zone: newPlayer.current_zone,
-            difficulty_mode: newPlayer.difficulty_mode
+            difficulty_mode: newPlayer.difficulty_mode,
+            max_players: newPlayer.max_players
           }
         ])
         .select()
+
+      // Fail-safe fallback if max_players column is missing in Supabase schema
+      if (error && error.message?.includes('max_players')) {
+        console.warn('La columna max_players no existe aún en Supabase. Ejecutando fallback de inserción...')
+        const fallbackRes = await supabase
+          .from('active_players')
+          .insert([
+            {
+              id: newPlayer.id,
+              room_pin: newPlayer.room_pin,
+              player_name: newPlayer.player_name,
+              hp: newPlayer.hp,
+              category_key: newPlayer.category_key,
+              avatar_icon: newPlayer.avatar_icon,
+              current_zone: newPlayer.current_zone,
+              difficulty_mode: newPlayer.difficulty_mode
+            }
+          ])
+          .select()
+        data = fallbackRes.data
+        error = fallbackRes.error
+      }
 
       if (!error && data && data.length > 0) {
         saveCachedPlayer(data[0] as ActivePlayer)
@@ -435,10 +514,10 @@ export async function applyPlayerDamage(
 export async function applyPlayerHealing(
   player_id: string,
   heal_amount: number,
-  current_hp: number
+  current_hp: number = 100
 ): Promise<void> {
   if (!player_id || heal_amount <= 0) return
-  const newHp = Math.min(current_hp + heal_amount, 100)
+  const newHp = Math.min((current_hp || 0) + heal_amount, 100)
 
   try {
     const supabase = createClient()
@@ -452,6 +531,77 @@ export async function applyPlayerHealing(
 }
 
 /**
+ * Actualiza la progresión de zona del jugador tras responder a un combate (Regla 9):
+ * - Si acierta: completed_zones = append(completed_zones, zoneId), mandatory_zone = null
+ * - Si falla: mandatory_zone = zoneId
+ */
+export async function recordPlayerZoneOutcome(
+  player_id: string,
+  zoneId: string,
+  isCorrect: boolean,
+  currentCompletedZones: string[] = []
+): Promise<void> {
+  if (!player_id || !zoneId) return
+
+  const updatedCompleted = isCorrect 
+    ? Array.from(new Set([...(currentCompletedZones || []), zoneId]))
+    : (currentCompletedZones || [])
+
+  const updatedMandatory = isCorrect ? null : zoneId
+
+  // Update in-memory caches across rooms
+  for (const [, pMap] of localTabPlayersCache) {
+    for (const [, p] of pMap) {
+      if (p.id === player_id) {
+        p.completed_zones = updatedCompleted
+        p.mandatory_zone = updatedMandatory
+      }
+    }
+  }
+
+  try {
+    const supabase = createClient()
+    await supabase
+      .from('active_players')
+      .update({
+        completed_zones: updatedCompleted,
+        mandatory_zone: updatedMandatory
+      })
+      .eq('id', player_id)
+  } catch (err) {
+    console.error('Error al actualizar progresión de zona en Supabase:', err)
+  }
+}
+
+/**
+ * Rompe y libera la zona obligatoria (mandatory_zone = null) de un jugador
+ * por Impacto de Tormenta.
+ */
+export async function clearPlayerMandatoryZone(player_id: string): Promise<void> {
+  if (!player_id) return
+
+  for (const [, pMap] of localTabPlayersCache) {
+    for (const [, p] of pMap) {
+      if (p.id === player_id) {
+        p.mandatory_zone = null
+      }
+    }
+  }
+
+  try {
+    const supabase = createClient()
+    await supabase
+      .from('active_players')
+      .update({ mandatory_zone: null })
+      .eq('id', player_id)
+  } catch (err) {
+    console.error('Error al liberar mandatory_zone en Supabase:', err)
+  }
+}
+
+
+
+/**
  * Elimina (DELETE) un jugador o la sala entera de Supabase al salir
  */
 export async function leaveRoom(
@@ -463,24 +613,29 @@ export async function leaveRoom(
   const cleanName = String(player_name).trim()
   if (!cleanPin) return
 
-  if (isHost) {
-    localTabPlayersCache.delete(cleanPin)
-    roomCallbacksMap.delete(cleanPin)
-    activeRoomChannels.delete(cleanPin)
-  } else if (cleanName && localTabPlayersCache.has(cleanPin)) {
-    localTabPlayersCache.get(cleanPin)!.delete(cleanName)
-  }
-
   try {
     const supabase = createClient()
 
     if (isHost) {
+      // 1. Broadcast room closure FIRST while the channel is active
+      broadcastGameState(cleanPin, 'ROOM_CLOSED', { roomClosed: true })
+
+      // 2. Delete rows from database
       await supabase
         .from('active_players')
         .delete()
         .eq('room_pin', cleanPin)
 
-      broadcastGameState(cleanPin, 'ROOM_CLOSED', { roomClosed: true })
+      // 3. Unsubscribe channel properly from Supabase JS SDK client
+      const existingChannel = activeRoomChannels.get(cleanPin)
+      if (existingChannel) {
+        supabase.removeChannel(existingChannel)
+      }
+
+      // 4. Clear local memory maps
+      localTabPlayersCache.delete(cleanPin)
+      roomCallbacksMap.delete(cleanPin)
+      activeRoomChannels.delete(cleanPin)
     } else {
       if (cleanName) {
         await supabase
@@ -488,6 +643,10 @@ export async function leaveRoom(
           .delete()
           .eq('room_pin', cleanPin)
           .eq('player_name', cleanName)
+      }
+
+      if (localTabPlayersCache.has(cleanPin) && cleanName) {
+        localTabPlayersCache.get(cleanPin)!.delete(cleanName)
       }
 
       const { data } = await supabase
@@ -501,6 +660,14 @@ export async function leaveRoom(
           .from('active_players')
           .delete()
           .eq('room_pin', cleanPin)
+
+        const existingChannel = activeRoomChannels.get(cleanPin)
+        if (existingChannel) {
+          supabase.removeChannel(existingChannel)
+        }
+        localTabPlayersCache.delete(cleanPin)
+        roomCallbacksMap.delete(cleanPin)
+        activeRoomChannels.delete(cleanPin)
       }
     }
   } catch (err) {
@@ -575,11 +742,50 @@ export function subscribeToPlayerReady(
   const callbacks = getOrCreateRoomCallbacks(cleanPin)
   callbacks.readyChange.add(onReadyChange)
 
-  // Ensure channel is initialized
   getOrCreateRoomChannel(cleanPin)
 
   return () => {
     callbacks.readyChange.delete(onReadyChange)
+  }
+}
+
+/**
+ * Emite (BROADCAST) la respuesta completada de un jugador durante COMBAT
+ */
+export function sendPlayerAnswered(room_pin: string, playerName: string) {
+  const cleanPin = String(room_pin).trim()
+  if (!cleanPin) return
+
+  const channel = getOrCreateRoomChannel(cleanPin)
+  if (!channel) return
+
+  channel.send({
+    type: 'broadcast',
+    event: 'player_answered',
+    payload: {
+      playerName,
+      timestamp: Date.now()
+    }
+  })
+}
+
+/**
+ * Escucha eventos de respuestas completadas de jugadores durante COMBAT vía Realtime Broadcast
+ */
+export function subscribeToPlayerAnswered(
+  room_pin: string,
+  onAnsweredChange: (playerName: string) => void
+) {
+  const cleanPin = String(room_pin).trim()
+  if (!cleanPin) return () => {}
+
+  const callbacks = getOrCreateRoomCallbacks(cleanPin)
+  callbacks.answeredChange.add(onAnsweredChange)
+
+  getOrCreateRoomChannel(cleanPin)
+
+  return () => {
+    callbacks.answeredChange.delete(onAnsweredChange)
   }
 }
 
@@ -618,7 +824,6 @@ export function subscribeToGameStateBroadcast(
   const callbacks = getOrCreateRoomCallbacks(cleanPin)
   callbacks.stateChange.add(onStateChange)
 
-  // Ensure channel is initialized
   getOrCreateRoomChannel(cleanPin)
 
   return () => {
@@ -668,7 +873,6 @@ export function subscribeToRoomEmotes(
   const callbacks = getOrCreateRoomCallbacks(cleanPin)
   callbacks.emoteReceived.add(onEmoteReceived)
 
-  // Ensure channel is initialized
   getOrCreateRoomChannel(cleanPin)
 
   return () => {
@@ -696,10 +900,46 @@ export function subscribeToRoomPlayers(
   const callbacks = getOrCreateRoomCallbacks(cleanPin)
   callbacks.playersUpdate.add(onPlayersUpdate)
 
-  // Ensure channel is initialized with postgres_changes handler added BEFORE subscribe()
   getOrCreateRoomChannel(cleanPin)
 
   return () => {
     callbacks.playersUpdate.delete(onPlayersUpdate)
+  }
+}
+
+/**
+ * Fase 3: Reinicio masivo de sala para Revancha
+ * Resetea HP a 100, current_zone a null, completed_zones a [] y mandatory_zone a null
+ */
+export async function resetRoomForRematch(room_pin: string): Promise<boolean> {
+  const cleanPin = String(room_pin).trim()
+  if (!cleanPin) return false
+
+  try {
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('active_players')
+      .update({
+        hp: 100,
+        current_zone: null,
+        completed_zones: [],
+        mandatory_zone: null
+      })
+      .eq('room_pin', cleanPin)
+
+    if (error) {
+      console.error('[resetRoomForRematch] Error resetting room players in Supabase:', error)
+      return false
+    }
+
+    // Refresh memory cache
+    const updatedPlayers = await getPlayersInRoom(cleanPin)
+    const callbacks = getOrCreateRoomCallbacks(cleanPin)
+    callbacks.playersUpdate.forEach((cb) => cb(updatedPlayers))
+
+    return true
+  } catch (err) {
+    console.error('[resetRoomForRematch] Unexpected error resetting room:', err)
+    return false
   }
 }

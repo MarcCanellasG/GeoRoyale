@@ -21,15 +21,17 @@ export interface RoundResultPayload {
 
 export interface GameState {
   phase: GamePhase
+  roundNumber: number
   activeZoneId: string | null
   currentQuestion: Question | null
   lastResult: RoundResultPayload | null
   winner: ActivePlayer | null
 }
 
-export function useGameState(initialPhase: GamePhase = 'LOBBY') {
+export function useGameState(initialPhase: GamePhase = 'LOBBY', initialRound: number = 1) {
   const [state, setState] = useState<GameState>({
     phase: initialPhase,
+    roundNumber: initialRound,
     activeZoneId: null,
     currentQuestion: null,
     lastResult: null,
@@ -37,7 +39,7 @@ export function useGameState(initialPhase: GamePhase = 'LOBBY') {
   })
 
   /**
-   * Transición 1: LOBBY -> ZONE_SELECTION (Iniciar Partida)
+   * Transición 1: LOBBY -> ZONE_SELECTION (Iniciar Partida en Ronda 1)
    */
   const startGame = useCallback(() => {
     setState((prev) => {
@@ -48,6 +50,7 @@ export function useGameState(initialPhase: GamePhase = 'LOBBY') {
       return {
         ...prev,
         phase: 'ZONE_SELECTION',
+        roundNumber: 1,
         lastResult: null,
         winner: null
       }
@@ -90,34 +93,36 @@ export function useGameState(initialPhase: GamePhase = 'LOBBY') {
   }, [])
 
   /**
-   * Transición 4: ROUND_RESULT -> ZONE_SELECTION (Siguiente Ronda)
+   * Transición 4: ROUND_RESULT -> ZONE_SELECTION (Incrementar Ronda)
    */
   const nextRound = useCallback(() => {
     setState((prev) => ({
       ...prev,
       phase: 'ZONE_SELECTION',
+      roundNumber: prev.roundNumber + 1,
       activeZoneId: null,
       currentQuestion: null
     }))
   }, [])
 
   /**
-   * Transición 5: Cualquier Fase -> VICTORY (Pantalla Final de Gran Ganador)
+   * Transición 5: Cualquier Fase -> VICTORY (Pantalla Final de Gran Ganador o Empate)
    */
-  const endGame = useCallback((winnerPlayer: ActivePlayer) => {
+  const endGame = useCallback((winnerPlayer?: ActivePlayer | null) => {
     setState((prev) => ({
       ...prev,
       phase: 'VICTORY',
-      winner: winnerPlayer
+      winner: winnerPlayer || null
     }))
   }, [])
 
   /**
-   * Reinicio manual: Cualquier Fase -> LOBBY
+   * Reinicio manual: Cualquier Fase -> LOBBY (Reset Ronda a 1)
    */
   const resetToLobby = useCallback(() => {
     setState({
       phase: 'LOBBY',
+      roundNumber: 1,
       activeZoneId: null,
       currentQuestion: null,
       lastResult: null,
@@ -128,16 +133,29 @@ export function useGameState(initialPhase: GamePhase = 'LOBBY') {
   /**
    * Método de Sincronización Remota (Preparado para Supabase Realtime)
    */
-  const syncState = useCallback((newPhase: GamePhase, payload?: Partial<GameState>) => {
-    setState((prev) => ({
-      ...prev,
-      phase: newPhase,
-      ...payload
-    }))
+  const syncState = useCallback((newPhase: GamePhase, payload?: Partial<GameState> & { round_number?: number }) => {
+    setState((prev) => {
+      let nextRoundNumber = prev.roundNumber
+      if (payload?.round_number !== undefined) {
+        nextRoundNumber = payload.round_number
+      } else if (payload?.roundNumber !== undefined) {
+        nextRoundNumber = payload.roundNumber
+      } else if (newPhase === 'ZONE_SELECTION' && prev.phase === 'ROUND_RESULT') {
+        nextRoundNumber = prev.roundNumber + 1
+      }
+
+      return {
+        ...prev,
+        phase: newPhase,
+        ...payload,
+        roundNumber: nextRoundNumber
+      }
+    })
   }, [])
 
   return {
     currentPhase: state.phase,
+    roundNumber: state.roundNumber,
     activeZoneId: state.activeZoneId,
     currentQuestion: state.currentQuestion,
     lastResult: state.lastResult,

@@ -22,7 +22,8 @@ export default function DemoMapPage() {
     questions: getQuestionsForZone('geografia', 'archipielago-fisico', 3)
   })
 
-  const categoryIcons = {
+  const categoryIcons: Record<CategoryKey, any> = {
+    general: BookOpen,
     geografia: Globe,
     cultura_general: BookOpen,
     deportes: Trophy,
@@ -123,12 +124,13 @@ export default function DemoMapPage() {
       {/* Fullscreen Combat Interface Overlay */}
       {activeCombat && (
         <CombatInterface
+          questions={extractedData.questions}
           question={activeCombat.question}
           zoneName={activeCombat.zoneName}
-          duration={10}
+          zoneId={extractedData.zoneId}
+          duration={8}
           onAnswer={(selectedIdx, isCorrect) => {
             console.log('Resultado de respuesta:', { selectedIdx, isCorrect })
-            setActiveCombat(null)
           }}
           onClose={() => setActiveCombat(null)}
         />
